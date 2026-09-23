@@ -22,6 +22,9 @@ enum ProbeConfig {
 
 /// Таймер, последний глиф которого (лигатура секунд) занимает квадрат size×size.
 /// Остальные глифы шрифта пустые и уходят влево за край.
+/// Без .fixedSize(): с ним таймер в виджете на домашнем экране пустой, хотя в приложении
+/// работает (проверено на симуляторе iOS 26.5, 2026-09-23). Apple советует для таймеров
+/// в виджете фиксированный frame + multilineTextAlignment.
 struct TimerGlyph: View {
     let date: Date
     let font: String
@@ -30,9 +33,8 @@ struct TimerGlyph: View {
     var body: some View {
         Text(date, style: .timer)
             .font(.custom(font, fixedSize: size))
-            .lineLimit(1)
-            .fixedSize()
             .frame(width: size * 9, height: size, alignment: .trailing)
+            .multilineTextAlignment(.trailing)
             .offset(x: -size * 4)
             .frame(width: size, height: size)
     }

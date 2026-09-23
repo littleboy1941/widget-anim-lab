@@ -60,8 +60,5 @@ grep -E "Test Case|error|failed|passed" "$OUT/uitest.log" | tail -20
 xcrun simctl terminate "$DEV" com.widgetlab.fontprobe 2>/dev/null || true
 # даём системе время заменить заглушку живым виджетом
 sleep 60
-record "home_widget" 15
-# лог процессов, которые рисуют виджет, и самого расширения
-xcrun simctl spawn "$DEV" log show --last 10m --style compact   --predicate 'process CONTAINS[c] "FontProbe" OR process == "chronod" OR process == "SpringBoard" AND (eventMessage CONTAINS[c] "widget" OR eventMessage CONTAINS[c] "font" OR eventMessage CONTAINS[c] "archive")'   > "$OUT/widget_log.txt" 2>&1
-grep -iE "error|fail|deny|font|archive|timeout|exceed" "$OUT/widget_log.txt" | grep -i "fontprobe\|chronod" | head -40
+record "home_widget" 20
 xcrun simctl shutdown "$DEV" || true

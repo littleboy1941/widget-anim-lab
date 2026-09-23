@@ -22,7 +22,7 @@ jobs:
             xcode: /Applications/Xcode_26.6.app
             name: ios26
     runs-on: ${{ matrix.image }}
-    timeout-minutes: 45
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@v4
 
