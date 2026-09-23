@@ -9,10 +9,26 @@ on:
 
 jobs:
   probe:
-    runs-on: xcode-27
+    # Два образа: на домашнем экране симулятора iOS 27 виджет оказался замороженным
+    # (не тикал даже системный таймер) — проверяем, живой ли он на iOS 26.
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - image: xcode-27
+            xcode: ""
+            name: ios27
+          - image: macos-26
+            xcode: /Applications/Xcode_26.6.app
+            name: ios26
+    runs-on: ${{ matrix.image }}
     timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
+
+      - name: Select Xcode
+        if: matrix.xcode != ''
+        run: sudo xcode-select -s "${{ matrix.xcode }}/Contents/Developer"
 
       - name: Install XcodeGen
         run: |
@@ -50,8 +66,8 @@ jobs:
           find Payload -name "*.appex" -o -name "*.ttf" | head -50
           zip -qry FontProbe.ipa Payload
 
-      - name: Ensure iOS 27 simulator runtime
-        run: xcrun simctl list runtimes | grep -q "iOS 27" || xcodebuild -downloadPlatform iOS
+      - name: Ensure iOS simulator runtime
+        run: xcrun simctl list runtimes | grep -q "iOS" || xcodebuild -downloadPlatform iOS
 
       - name: Run in simulator
         run: |
@@ -65,7 +81,7 @@ jobs:
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: font-probe
+          name: font-probe-${{ matrix.name }}
           path: |
             probe/out/ios*
             probe/FontProbe.ipa
