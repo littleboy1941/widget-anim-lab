@@ -1,0 +1,6 @@
+probe/FontProbe.xcodeproj/
+probe/build_*/
+probe/build_*.log
+probe/out/
+probe/Payload/
+probe/*.ipa

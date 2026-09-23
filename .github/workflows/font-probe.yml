@@ -1,0 +1,72 @@
+name: Font probe
+
+# Прототип анимации на публичных API, сборка Xcode 27 (SDK 27):
+# запуск в симуляторе iOS 27 с разбором видео + IPA для телефона (SideStore).
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  probe:
+    runs-on: xcode-27
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install XcodeGen
+        run: |
+          curl -sL -o xcodegen.zip https://github.com/yonaskolb/XcodeGen/releases/latest/download/xcodegen.zip
+          unzip -q xcodegen.zip -d xcodegen
+          echo "$PWD/xcodegen/xcodegen/bin" >> "$GITHUB_PATH"
+
+      - name: Generate project
+        run: |
+          xcodebuild -version
+          cd probe && xcodegen generate
+
+      - name: Build for simulator
+        run: |
+          cd probe
+          xcodebuild -project FontProbe.xcodeproj -scheme FontProbe -configuration Release \
+            -sdk iphonesimulator -destination 'generic/platform=iOS Simulator' \
+            -derivedDataPath build_sim CODE_SIGNING_ALLOWED=NO build > build_sim.log 2>&1 \
+            || { grep -E "error:" build_sim.log | head -40; tail -40 build_sim.log; exit 1; }
+          mkdir -p out
+          cp -R build_sim/Build/Products/Release-iphonesimulator/FontProbe.app out/
+          codesign -f -s - --deep out/FontProbe.app
+          xcrun vtool -show-build out/FontProbe.app/FontProbe | grep -E "platform|sdk"
+
+      - name: Build IPA for device
+        run: |
+          cd probe
+          xcodebuild -project FontProbe.xcodeproj -scheme FontProbe -configuration Release \
+            -sdk iphoneos -destination 'generic/platform=iOS' \
+            -derivedDataPath build_dev CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" \
+            build > build_dev.log 2>&1 \
+            || { grep -E "error:" build_dev.log | head -40; tail -40 build_dev.log; exit 1; }
+          mkdir -p Payload
+          cp -R build_dev/Build/Products/Release-iphoneos/FontProbe.app Payload/
+          find Payload -name "*.appex" -o -name "*.ttf" | head -50
+          zip -qry FontProbe.ipa Payload
+
+      - name: Ensure iOS 27 simulator runtime
+        run: xcrun simctl list runtimes | grep -q "iOS 27" || xcodebuild -downloadPlatform iOS
+
+      - name: Run in simulator
+        run: |
+          MARKERS=$(cd probe && python3 -c '
+          import colorsys
+          n = 12
+          print(";".join(",".join(str(round(v * 255)) for v in colorsys.hsv_to_rgb(k / n, 1, 1)) for k in range(n)))')
+          echo "markers $MARKERS"
+          bash probe/run.sh "$MARKERS"
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: font-probe
+          path: |
+            probe/out/ios*
+            probe/FontProbe.ipa
+            probe/build_*.log

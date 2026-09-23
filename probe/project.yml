@@ -1,0 +1,110 @@
+# Прототип анимации виджета на публичных API (см. fontgen.py, Shared/TimerAnimation.swift).
+# Собирается в облаке: .github/workflows/font-probe.yml.
+name: FontProbe
+options:
+  bundleIdPrefix: com.widgetlab.fontprobe
+  deploymentTarget:
+    iOS: "18.0"
+settings:
+  base:
+    SWIFT_VERSION: "5.0"
+    TARGETED_DEVICE_FAMILY: "1"
+    MARKETING_VERSION: "0.1"
+    CURRENT_PROJECT_VERSION: "1"
+    CODE_SIGNING_ALLOWED: "NO"
+    CODE_SIGNING_REQUIRED: "NO"
+    CODE_SIGN_IDENTITY: ""
+    # пиксель-арт кладём как есть, без переупаковки PNG
+    COMPRESS_PNG_FILES: "NO"
+    STRIP_PNG_TEXT: "NO"
+targets:
+  FontProbe:
+    type: application
+    platform: iOS
+    sources:
+      - path: App
+      - path: Shared
+      - path: Fonts
+      - path: Frames
+    dependencies:
+      - target: FontProbeWidget
+    info:
+      path: App/Info.plist
+      properties:
+        CFBundleDisplayName: FontProbe
+        UILaunchScreen: {}
+        UIAppFonts:
+          - WABlink2.ttf
+          - WABlink3.ttf
+          - WAFrame0.ttf
+          - WAFrame1.ttf
+          - WAFrame2.ttf
+          - WAFrame3.ttf
+          - WAFrame4.ttf
+          - WAFrame5.ttf
+          - WAFrame6.ttf
+          - WAFrame7.ttf
+          - WAFrame8.ttf
+          - WAFrame9.ttf
+          - WAFrame10.ttf
+          - WAFrame11.ttf
+          - WAFrame12.ttf
+          - WAFrame13.ttf
+          - WAFrame14.ttf
+          - WAFrame15.ttf
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.widgetlab.fontprobe
+    scheme:
+      testTargets:
+        - FontProbeUITests
+  FontProbeWidget:
+    type: app-extension
+    platform: iOS
+    sources:
+      - path: Widget
+      - path: Shared
+      - path: Fonts
+      - path: Frames
+    info:
+      path: Widget/Info.plist
+      properties:
+        CFBundleDisplayName: FontProbe
+        NSExtension:
+          NSExtensionPointIdentifier: com.apple.widgetkit-extension
+        # Шрифты должны лежать в самом расширении: процесс, рисующий виджет,
+        # не читает шрифты из App Group (отчёт разработчика на форуме Apple).
+        UIAppFonts:
+        - WABlink2.ttf
+        - WABlink3.ttf
+        - WAFrame0.ttf
+        - WAFrame1.ttf
+        - WAFrame2.ttf
+        - WAFrame3.ttf
+        - WAFrame4.ttf
+        - WAFrame5.ttf
+        - WAFrame6.ttf
+        - WAFrame7.ttf
+        - WAFrame8.ttf
+        - WAFrame9.ttf
+        - WAFrame10.ttf
+        - WAFrame11.ttf
+        - WAFrame12.ttf
+        - WAFrame13.ttf
+        - WAFrame14.ttf
+        - WAFrame15.ttf
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.widgetlab.fontprobe.widget
+  FontProbeUITests:
+    type: bundle.ui-testing
+    platform: iOS
+    sources:
+      - path: UITests
+    dependencies:
+      - target: FontProbe
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.widgetlab.fontprobe.uitests
+        TEST_TARGET_NAME: FontProbe
+        GENERATE_INFOPLIST_FILE: "YES"
