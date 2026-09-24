@@ -180,7 +180,9 @@ struct DiagProbeWidget: Widget {
                 DiagWidgetView(entry: entry)
             }
         }
-        .configurationDisplayName("Probe 0: \(Variant.mode)")
+        // Только постоянная строка: с подстановкой ("Probe 0: \(Variant.mode)") WidgetKit
+        // падает на assert в body, и виджета нет в галерее (прогон 35971719005).
+        .configurationDisplayName("Probe 0")
         .supportedFamilies(Self.lengthCount == nil ? [.systemLarge] : [.systemSmall])
     }
 }
