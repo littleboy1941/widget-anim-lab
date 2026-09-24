@@ -71,6 +71,7 @@ struct ProjectListView: View {
     @State private var diagnostics: [UUID: AppError] = [:]
     @State private var pendingDelete: UUID?
     @State private var ciStatus: String?
+    @State private var showLicenses = false
     private let groupID = AppGroup.identifier
 
     var body: some View {
@@ -148,10 +149,15 @@ struct ProjectListView: View {
                         Section("Тестовые анимации") {
                             ForEach(Self.testGIFs, id: \.self) { url in
                                 Button(url.deletingPathExtension().lastPathComponent) { importTestGIF(url) }
+                                    .accessibilityIdentifier("flow-test-gif-\(url.deletingPathExtension().lastPathComponent)")
                             }
+                        }
+                        Section {
+                            Button("Лицензии", systemImage: "doc.text") { showLicenses = true }
                         }
                     } label: { Image(systemName: "ellipsis.circle") }
                     .accessibilityLabel("Тестовые анимации")
+                    .accessibilityIdentifier("flow-test-animations-menu")
                 }
             }
             .navigationDestination(for: AppRoute.self) { route in
@@ -162,6 +168,12 @@ struct ProjectListView: View {
                 case .review(let id): ReviewView(id: id) { path.append(.done(id)) }
                 case .done(let id):
                     DoneView(id: id) { path.removeAll(); refresh() }
+                }
+            }
+            .sheet(isPresented: $showLicenses) {
+                NavigationStack {
+                    LicensesView()
+                        .toolbar { Button("Готово") { showLicenses = false } }
                 }
             }
             .confirmationDialog("Удалить проект?", isPresented: Binding(

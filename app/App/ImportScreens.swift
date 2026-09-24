@@ -211,6 +211,7 @@ struct AnalysisView: View {
                     }
                     Button("Открыть редактор", action: onEdit)
                         .buttonStyle(.borderedProminent).frame(maxWidth: .infinity)
+                        .accessibilityIdentifier("flow-open-editor")
                 } else if let error {
                     AppErrorView(error: error)
                 } else {

@@ -100,6 +100,7 @@ struct ReviewView: View {
                     .buttonStyle(.borderedProminent)
                     .disabled(!canSave)
                     .frame(maxWidth: .infinity)
+                    .accessibilityIdentifier("flow-save")
             }.padding(16)
         }
         .background(.black)
@@ -236,6 +237,7 @@ struct DoneView: View {
         VStack(alignment: .leading, spacing: 18) {
             Image(systemName: "checkmark.circle.fill").font(.system(size: 56)).foregroundStyle(.green)
             Text("\(manifest?.name ?? "Анимация") сохранена").font(.title2.bold())
+                .accessibilityIdentifier("flow-published")
             if let manifest {
                 Text("Размеры: \(manifest.variants.keys.map { $0.rawValue.uppercased() }.sorted().joined(separator: ", ")) · поколение \(manifest.generation.uuidString.prefix(8))")
                     .font(.caption.monospaced())

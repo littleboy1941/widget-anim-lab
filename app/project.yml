@@ -20,6 +20,10 @@ targets:
     sources:
       - path: Shared
       - path: App
+        excludes:
+          - PrivacyInfo.xcprivacy
+      - path: App/PrivacyInfo.xcprivacy
+        buildPhase: resources
       - path: Resources
         buildPhase: resources
     dependencies:
@@ -29,6 +33,8 @@ targets:
       properties:
         CFBundleDisplayName: WidgetLab
         UILaunchScreen: {}
+        ITSAppUsesNonExemptEncryption: false
+        NSPhotoLibraryUsageDescription: "Select a Live Photo to use its motion in an animated widget."
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.widgetlab.app
@@ -39,6 +45,8 @@ targets:
     sources:
       - path: Shared
       - path: Widget/AnimationWidget.swift
+      - path: Widget/PrivacyInfo.xcprivacy
+        buildPhase: resources
       - path: Fonts
         buildPhase: resources
     info:
@@ -90,6 +98,14 @@ targets:
         TEST_TARGET_NAME: WidgetLab
         GENERATE_INFOPLIST_FILE: "YES"
 schemes:
+  WidgetLabFlow:
+    build:
+      targets:
+        WidgetLab: all
+        WidgetLabUITests: [test]
+    test:
+      targets:
+        - WidgetLabUITests
   WidgetLabHome:
     build:
       targets:

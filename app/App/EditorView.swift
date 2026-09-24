@@ -98,6 +98,7 @@ struct EditorView: View {
                             .foregroundStyle(tool == item ? Color.blue : Color.secondary)
                             .frame(width: 52)
                         }
+                        .accessibilityIdentifier("flow-editor-tab-\(item.rawValue)")
                     }
                 }.padding(.horizontal, 12).padding(.vertical, 8)
             }
@@ -109,6 +110,7 @@ struct EditorView: View {
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
                 Button("Готово") { onReview() }.disabled(plan == nil)
+                    .accessibilityIdentifier("flow-editor-done")
             }
             ToolbarItem(placement: .topBarTrailing) {
                 Button("DEV") { showDev = true }
@@ -210,6 +212,7 @@ struct EditorView: View {
                 preset("Надёжно", plan: reliablePlan)
             }
             Button("Все планы (\(plans.count))") { showPlans = true }
+                .accessibilityIdentifier("flow-all-plans")
             Picker("Петля", selection: Binding(get: { settings?.loop ?? .forward }, set: { mode in
                 change { $0.loop = mode; $0.manualSlots = nil }
             })) {
@@ -262,6 +265,7 @@ struct EditorView: View {
                 Button("\(item.fps) fps · \(item.slotCount) слотов · C \(item.cycle) · \(item.phaseCount) фаз") {
                     select(item); showPlans = false
                 }
+                .accessibilityIdentifier("flow-plan-\(item.fps)-\(item.slotCount)-\(item.cycle)")
             }
             .navigationTitle("Допустимые планы")
             .toolbar { Button("Закрыть") { showPlans = false } }
