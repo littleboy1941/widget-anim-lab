@@ -243,8 +243,11 @@ def main() -> None:
         if not ok:
             break
         time = capture.get(cv2.CAP_PROP_POS_MSEC) / 1000
-        if not math.isfinite(time) or time <= last_time:
-            parser.error("CAP_PROP_POS_MSEC did not provide increasing timestamps")
+        if not math.isfinite(time):
+            parser.error("CAP_PROP_POS_MSEC is not finite")
+        if time <= last_time:
+            # запись симулятора изредка даёт повтор метки времени — кадр пропускаем
+            continue
         last_time = time
         if time < args.start:
             continue
