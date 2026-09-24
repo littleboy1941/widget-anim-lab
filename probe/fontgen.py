@@ -160,6 +160,18 @@ def build_font(path, family, em, extra_glyphs, liga, svg_docs=None, bitmap_docs=
     fb.save(path)
 
 
+def generate_blinks(out, cycles, em):
+    # Seconds are the final two timer digits, ranging from 00 through 59.
+    # For C=60 only 00 is filled, including the minute wrap.
+    for c in cycles:
+        if 60 % c:
+            sys.exit(f"цикл мигания {c} не делит 60")
+        blink_liga = {(a, b): ("full" if (10 * a + b) % c == 0 else "empty")
+                      for a in range(6) for b in range(10)}
+        build_font(os.path.join(out, f"WABlink{c}.ttf"), f"WABlink{c}", em,
+                   {"full": square_glyph(em), "empty": empty_glyph()}, blink_liga)
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--fps", type=int, default=8)
@@ -169,9 +181,16 @@ def main():
     ap.add_argument("--sbix", action="store_true", help="embed PNG glyphs in an sbix strike instead of SVG")
     ap.add_argument("--input-dir", type=Path, help="numbered frame_<n>.png inputs")
     ap.add_argument("--blink", type=int, nargs="*", default=[2, 3], help="циклы мигающих масок, с")
+    ap.add_argument("--blink-only", action="store_true", help="generate only WABlink fonts")
     ap.add_argument("--png-out", help="куда сохранить кадры PNG (вариант с картинками)")
     ap.add_argument("images", nargs="*")
     args = ap.parse_args()
+
+    if args.blink_only:
+        os.makedirs(args.out, exist_ok=True)
+        generate_blinks(args.out, args.blink, TEST_SIZE * 16)
+        print(f"blink cycles={args.blink}")
+        return
 
     if args.input_dir and args.images:
         ap.error("use either --input-dir or positional images")
@@ -211,13 +230,7 @@ def main():
 
     # Мигающие шрифты-маски: квадрат, если число секунд делится на C, иначе пусто.
     # Две цифры секунд дают n mod 60, поэтому C должно делить 60.
-    for c in args.blink:
-        if 60 % c:
-            sys.exit(f"цикл мигания {c} не делит 60")
-        blink_liga = {(a, b): ("full" if (10 * a + b) % c == 0 else "empty")
-                      for a in range(6) for b in range(10)}
-        build_font(os.path.join(args.out, f"WABlink{c}.ttf"), f"WABlink{c}", em,
-                   {"full": square_glyph(em), "empty": empty_glyph()}, blink_liga)
+    generate_blinks(args.out, args.blink, em)
 
     if args.png_out:
         os.makedirs(args.png_out, exist_ok=True)

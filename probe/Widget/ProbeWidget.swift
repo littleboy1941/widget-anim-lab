@@ -63,7 +63,12 @@ struct ImagesProbeWidget: Widget {
 @main
 struct ProbeWidgetBundle: WidgetBundle {
     var body: some Widget {
-        #if RATE_EXPERIMENTS
+        #if DEEP_EXPERIMENTS
+        DeepSelectorWidget()
+        Deep240SmallWidget()
+        Deep480SmallWidget()
+        Deep240LargeWidget()
+        #elseif RATE_EXPERIMENTS
         RateSelectorWidget()
         Rate12Widget()
         Rate16Widget()

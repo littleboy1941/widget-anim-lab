@@ -17,7 +17,7 @@ enum ProbeConfig {
     static let overlap = 0.03
 
     static let fontNames = (0..<(fontCycle * fps)).map { "WAFrame\($0)-Regular" }
-        + [2, 3, 5, 10, 20].map { "WABlink\($0)-Regular" }
+        + [2, 3, 5, 10, 20, 30, 60].map { "WABlink\($0)-Regular" }
 }
 
 /// Таймер, последний глиф которого (лигатура секунд) занимает квадрат size×size.
@@ -177,26 +177,28 @@ struct ImageFramesAnimation: View {
     }
 }
 
-/// Four independent 40-frame stacks. Each stack retains the global phase number:
-/// its 40 masks still use the same 20-second clock as the unsplit 160-frame control.
+/// Independent stacks retain global phase numbers and share the cycle clock.
 struct SplitImageFramesAnimation: View {
     let ref: Date
     let size: CGFloat
     let frames: [UIImage]
+    var fps = 8
+    var cycle = 20
+    var stackSize = 40
 
     var body: some View {
         ZStack {
-            ForEach(0..<4, id: \.self) { stack in
+            ForEach(0..<((frames.count + stackSize - 1) / stackSize), id: \.self) { stack in
                 ZStack {
-                    ForEach(0..<40, id: \.self) { local in
-                        let i = stack * 40 + local
+                    ForEach(0..<stackSize, id: \.self) { local in
+                        let i = stack * stackSize + local
                         if i < frames.count {
                             Image(uiImage: frames[i])
                                 .resizable()
                                 .interpolation(.none)
                                 .frame(width: size, height: size)
                                 .mask {
-                                    PhaseWindow(ref: ref, phase: i, fps: 8, cycle: 20,
+                                    PhaseWindow(ref: ref, phase: i, fps: fps, cycle: cycle,
                                                 size: size, overlap: 0.02)
                                 }
                         }

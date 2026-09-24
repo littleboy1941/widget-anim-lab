@@ -12,18 +12,18 @@ jobs:
   probe:
     # На домашнем экране симулятора iOS 27 виджеты замороженные (не тикает даже системный
     # таймер), на iOS 26.5 — живые. Поэтому только macos-26; задания различаются тем,
-    # что показывает первый виджет (Shared/Variant.swift). Все 10 режимов
-    # присутствуют в каждом bundle; только первый переключается матрицей.
+    # что показывает первый виджет (Shared/Variant.swift). В deep bundle четыре
+    # виджета; только первый переключается матрицей.
     strategy:
       fail-fast: false
       matrix:
-        # Серия B: частота и перекрытие. Серия A: sbix и SVG-шрифты.
-        mode: [fps8, fps12, fps16, fps24, fps30, fps24o0, fps30o0, fontA24, fontA30, fontA8svg]
+        mode: [deep240s, deep480s, deep240]
     runs-on: macos-26
     env:
       SKIP_APP: "1"
       NO_ANALYZE: "1"
-      PROBE_SWIFT_FLAGS: RATE_EXPERIMENTS
+      PROBE_SWIFT_FLAGS: DEEP_EXPERIMENTS
+      RECORD_SECONDS: "30"
     timeout-minutes: 60
     steps:
       - uses: actions/checkout@v4
@@ -37,9 +37,9 @@ jobs:
           echo 'enum Variant { static let mode = "${{ matrix.mode }}" }' > Shared/Variant.swift
           cat Shared/Variant.swift
           python3 -m pip install --quiet --break-system-packages pillow fonttools
-          python3 prepare_rate.py
-          ls Fonts/WABlink2.ttf
-          echo "Rate images: $(find RateFrames -name '*.png' | wc -l)"
+          python3 prepare_deep.py
+          ls Fonts/WABlink30.ttf Fonts/WABlink60.ttf
+          echo "Deep images: $(find DeepFrames -name '*.png' | wc -l)"
 
       - name: Install XcodeGen
         run: |
@@ -58,7 +58,7 @@ jobs:
           xcodebuild -project FontProbe.xcodeproj -scheme FontProbe -configuration Release \
             -sdk iphonesimulator -destination 'generic/platform=iOS Simulator' \
             -derivedDataPath build_sim CODE_SIGNING_ALLOWED=NO \
-            SWIFT_ACTIVE_COMPILATION_CONDITIONS=RATE_EXPERIMENTS build > build_sim.log 2>&1 \
+            SWIFT_ACTIVE_COMPILATION_CONDITIONS=DEEP_EXPERIMENTS build > build_sim.log 2>&1 \
             || { grep -E "error:" build_sim.log | head -40; tail -40 build_sim.log; exit 1; }
           mkdir -p out
           cp -R build_sim/Build/Products/Release-iphonesimulator/FontProbe.app out/
@@ -66,13 +66,13 @@ jobs:
           xcrun vtool -show-build out/FontProbe.app/FontProbe | grep -E "platform|sdk"
 
       - name: Build IPA for device
-        if: matrix.mode == 'fps8'
+        if: matrix.mode == 'deep240'
         run: |
           cd probe
           xcodebuild -project FontProbe.xcodeproj -scheme FontProbe -configuration Release \
             -sdk iphoneos -destination 'generic/platform=iOS' \
             -derivedDataPath build_dev CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" \
-            SWIFT_ACTIVE_COMPILATION_CONDITIONS=RATE_EXPERIMENTS \
+            SWIFT_ACTIVE_COMPILATION_CONDITIONS=DEEP_EXPERIMENTS \
             build > build_dev.log 2>&1 \
             || { grep -E "error:" build_dev.log | head -40; tail -40 build_dev.log; exit 1; }
           mkdir -p Payload
@@ -92,24 +92,18 @@ jobs:
           echo "markers $MARKERS"
           bash probe/run.sh "$MARKERS"
 
-      - name: Analyze numbered frames
+      - name: Analyze deep frames
         run: |
           python3 -m pip install --quiet --break-system-packages opencv-python-headless numpy
           video=$(find probe/out -name home_widget.mp4 -print -quit)
           case "${{ matrix.mode }}" in
-            fontA24) frames=240 ;;
-            fontA30) frames=120 ;;
-            fontA8svg) frames=80 ;;
-            fps24o0) frames=24 ;;
-            fps30o0) frames=30 ;;
-            fps*) frames=${{ matrix.mode }}; frames=${frames#fps} ;;
+            deep240) cell=142,240,384,384 ;;
+            *) cell=238,336,192,192 ;;
           esac
-          # simctl recordVideo is variable-rate at up to about 60 samples/s.
-          # At 30 fps it can miss whole animation frames between samples.
           cd probe
           python3 analyze_cells.py "${video#probe/}" \
-            --cell "${{ matrix.mode }}:142,240,384,384:idx" \
-            --frames "$frames" --start 2 --end 25 | tee out/rate_analysis.txt
+            --cell "${{ matrix.mode }}:$cell:idx" \
+            --frames 240 --start 0 --end 30 | tee out/deep_analysis.txt
 
       - uses: actions/upload-artifact@v4
         if: always()
@@ -117,6 +111,6 @@ jobs:
           name: font-probe-${{ matrix.mode }}
           path: |
             probe/out/ios*
-            probe/out/rate_analysis.txt
+            probe/out/deep_analysis.txt
             probe/FontProbe.ipa
             probe/build_*.log

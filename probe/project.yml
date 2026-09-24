@@ -35,6 +35,8 @@ targets:
         optional: true
       - path: RateFrames
         optional: true
+      - path: DeepFrames
+        optional: true
       # кадры для замера памяти (CI, make_frames.py)
       - path: MemFrames
         optional: true
@@ -51,6 +53,8 @@ targets:
           - WABlink5.ttf
           - WABlink10.ttf
           - WABlink20.ttf
+          - WABlink30.ttf
+          - WABlink60.ttf
           - WAFrame0.ttf
           - WAFrame1.ttf
           - WAFrame2.ttf
@@ -214,6 +218,8 @@ targets:
         optional: true
       - path: RateFrames
         optional: true
+      - path: DeepFrames
+        optional: true
       # кадры для замера памяти (CI, make_frames.py)
       - path: MemFrames
         optional: true
@@ -231,6 +237,8 @@ targets:
         - WABlink5.ttf
         - WABlink10.ttf
         - WABlink20.ttf
+        - WABlink30.ttf
+        - WABlink60.ttf
         - WAFrame0.ttf
         - WAFrame1.ttf
         - WAFrame2.ttf

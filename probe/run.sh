@@ -1,7 +1,7 @@
 #!/bin/bash
 # Проверка на самом новом симуляторе iOS:
 # 1) внутри приложения: варианты images и fonts, видео 8 с и разбор;
-# 2) на домашнем экране: UI-тест ставит виджет «Probe B», видео 10 с и разбор.
+# 2) на домашнем экране: UI-тест ставит первый виджет, затем пишет видео.
 set -uo pipefail
 cd "$(dirname "$0")"
 MARKERS=$1
@@ -79,8 +79,8 @@ grep -E "Test Case|error|failed|passed" "$OUT/uitest.log" | tail -20
 xcrun simctl terminate "$DEV" com.widgetlab.fontprobe 2>/dev/null || true
 # даём системе время заменить заглушку живым виджетом
 sleep 60
-# Длинный вариант делает полный оборот за 20 с; запас покрывает задержку записи.
-record "home_widget" 25
+# Длительность записи задаёт RECORD_SECONDS (в deep-серии 30 с).
+record "home_widget" "${RECORD_SECONDS:-25}"
 # падения расширения и его сообщения — если виджета нет в галерее или он пустой
 mkdir -p "$OUT/crash"
 find ~/Library/Logs/DiagnosticReports -name "*FontProbe*" -exec cp {} "$OUT/crash/" \; 2>/dev/null
