@@ -27,6 +27,7 @@ jobs:
 
       - name: Import, add widget, record
         run: |
+          set +e   # ошибки не обрывают шаг: видео и журналы нужны и при провале
           cd app
           OUT="$PWD/ci-out/home"; mkdir -p "$OUT/crash"
           read -r RT DT < <(xcrun simctl list runtimes -j | python3 -c '
