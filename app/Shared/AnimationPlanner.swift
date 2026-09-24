@@ -41,9 +41,10 @@ enum AnimationPlanner {
             for cycle in AnimationBudget.supportedCycles where 60 % cycle == 0 {
                 let phases = fps * cycle
                 guard phases <= budget.maxPhases, phases % indices.count == 0 else { continue }
-                let repeated = slotToFrame.flatMap {
-                    Array(repeating: $0, count: phases / indices.count)
-                }
+                // петля из N кадров повторяется по кругу внутри цикла: фаза i → слот i mod N.
+                // (Растягивание «каждый слот P/N фаз подряд» замедляло анимацию в P/N раз —
+                // виджет в CI менял кадр раз в секунду, 2026-09-24.)
+                let repeated = (0..<phases).map { slotToFrame[$0 % indices.count] }
                 result.append(Plan(fps: fps, slotCount: indices.count, cycle: cycle,
                                    sourceIndices: indices, uniqueSourceIndices: unique,
                                    phaseToFrame: repeated))
@@ -90,8 +91,8 @@ enum AnimationPlanner {
                         return value
                     }
                     guard unique.count <= maxFrames else { continue }
-                    let repeats = phases / slots
-                    let table = slotToFrame.flatMap { Array(repeating: $0, count: repeats) }
+                    // по кругу, не растягиванием: фаза i → слот i mod N (см. выше)
+                    let table = (0..<phases).map { slotToFrame[$0 % slots] }
                     plans.append(Plan(fps: fps, slotCount: slots, cycle: cycle,
                                       sourceIndices: sequence, uniqueSourceIndices: unique,
                                       phaseToFrame: table))

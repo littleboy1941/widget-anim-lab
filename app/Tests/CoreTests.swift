@@ -41,6 +41,13 @@ final class CoreTests: XCTestCase {
             XCTAssertLessThanOrEqual(plan.phaseCount, 40)
             XCTAssertEqual(plan.phaseCount % plan.slotCount, 0)
             XCTAssertEqual(plan.phaseToFrame.count, plan.phaseCount)
+            // петля по кругу: фаза i показывает слот i mod N, кадр меняется каждую 1/fps с
+            for phase in 0..<plan.phaseCount {
+                let slot = phase % plan.slotCount
+                XCTAssertEqual(plan.phaseToFrame[phase],
+                               plan.uniqueSourceIndices.firstIndex(of: plan.sourceIndices[slot]),
+                               "fps \(plan.fps) C \(plan.cycle) N \(plan.slotCount) phase \(phase)")
+            }
         }
         XCTAssertTrue(plans.contains { $0.uniqueSourceIndices.count < $0.slotCount })
     }
