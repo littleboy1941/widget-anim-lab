@@ -19,7 +19,7 @@ targets:
     platform: iOS
     sources:
       - path: Shared
-      - path: App/WidgetLabApp.swift
+      - path: App
       - path: Resources
         buildPhase: resources
     dependencies:
@@ -67,14 +67,37 @@ targets:
     platform: iOS
     sources:
       - path: Shared
+      - path: App/Render
       - path: Tests
+      - path: Resources/test.gif
+        buildPhase: resources
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.widgetlab.app.tests
         GENERATE_INFOPLIST_FILE: "YES"
         TEST_HOST: ""
         BUNDLE_LOADER: ""
+  WidgetLabUITests:
+    type: bundle.ui-testing
+    platform: iOS
+    sources:
+      - path: UITests
+    dependencies:
+      - target: WidgetLab
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.widgetlab.app.uitests
+        TEST_TARGET_NAME: WidgetLab
+        GENERATE_INFOPLIST_FILE: "YES"
 schemes:
+  WidgetLabHome:
+    build:
+      targets:
+        WidgetLab: all
+        WidgetLabUITests: [test]
+    test:
+      targets:
+        - WidgetLabUITests
   WidgetLab:
     build:
       targets:

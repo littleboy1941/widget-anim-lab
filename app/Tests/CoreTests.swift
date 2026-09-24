@@ -112,4 +112,115 @@ final class CoreTests: XCTestCase {
                   case .budgetExceeded = error else { return XCTFail() }
         }
     }
+
+    private func twoColorImage() throws -> CGImage {
+        let info = CGImageAlphaInfo.premultipliedLast.rawValue | CGBitmapInfo.byteOrder32Big.rawValue
+        let context = try XCTUnwrap(CGContext(data: nil, width: 2, height: 1,
+            bitsPerComponent: 8, bytesPerRow: 8, space: CGColorSpaceCreateDeviceRGB(),
+            bitmapInfo: info))
+        context.setFillColor(UIColor.red.cgColor)
+        context.fill(CGRect(x: 0, y: 0, width: 1, height: 1))
+        context.setFillColor(UIColor.blue.cgColor)
+        context.fill(CGRect(x: 1, y: 0, width: 1, height: 1))
+        return try XCTUnwrap(context.makeImage())
+    }
+
+    private func pixel(_ image: CGImage, x: Int, y: Int) throws -> [UInt8] {
+        let info = CGImageAlphaInfo.premultipliedLast.rawValue | CGBitmapInfo.byteOrder32Big.rawValue
+        let context = try XCTUnwrap(CGContext(data: nil, width: image.width,
+            height: image.height, bitsPerComponent: 8, bytesPerRow: image.width * 4,
+            space: CGColorSpaceCreateDeviceRGB(), bitmapInfo: info))
+        context.interpolationQuality = .none
+        context.draw(image, in: CGRect(x: 0, y: 0, width: image.width, height: image.height))
+        let bytes = try XCTUnwrap(context.data).assumingMemoryBound(to: UInt8.self)
+        let start = (y * image.width + x) * 4
+        return Array(UnsafeBufferPointer(start: bytes + start, count: 4))
+    }
+
+    func testRectangularRenderingFitFillRotateFlipAndBackground() throws {
+        let source = try twoColorImage()
+        var options = FrameProcessor.Options()
+        options.width = 4; options.height = 4; options.style = .pixelArt
+        options.layout = .fit
+        let fit = try FrameProcessor.process(source, options: options)
+        XCTAssertEqual(fit.width, 4); XCTAssertEqual(fit.height, 4)
+        XCTAssertEqual(try pixel(fit, x: 0, y: 0)[3], 0)
+        XCTAssertEqual(try pixel(fit, x: 0, y: 2)[3], 255)
+
+        options.layout = .crop
+        let fill = try FrameProcessor.process(source, options: options)
+        XCTAssertEqual(try pixel(fill, x: 0, y: 0)[3], 255)
+        options.flipX = true
+        let flipped = try FrameProcessor.process(source, options: options)
+        XCTAssertEqual(try pixel(fill, x: 0, y: 2), try pixel(flipped, x: 3, y: 2))
+        XCTAssertEqual(try pixel(fill, x: 3, y: 2), try pixel(flipped, x: 0, y: 2))
+
+        options.flipX = false; options.rotation = 90
+        options.width = 2; options.height = 4
+        let rotated = try FrameProcessor.process(source, options: options)
+        XCTAssertEqual(rotated.width, 2); XCTAssertEqual(rotated.height, 4)
+        XCTAssertNotEqual(try pixel(rotated, x: 1, y: 0), try pixel(rotated, x: 1, y: 3))
+        options.flipY = true
+        let reflected = try FrameProcessor.process(source, options: options)
+        XCTAssertEqual(try pixel(rotated, x: 1, y: 0), try pixel(reflected, x: 1, y: 3))
+
+        options.rotation = 0; options.flipY = false; options.layout = .fit
+        options.width = 4; options.height = 4
+        options.background = CanvasColor(red: 12, green: 34, blue: 56)
+        let backed = try FrameProcessor.process(source, options: options)
+        XCTAssertEqual(try pixel(backed, x: 0, y: 0), [12, 34, 56, 255])
+    }
+
+    func testEditorSettingsRoundTrip() throws {
+        var value = EditorSettings(id: UUID(), name: "Тест", sourceFile: "source.gif", duration: 8)
+        value.fragmentStart = 1.25; value.fragmentEnd = 6.5
+        value.loop = .pingPong; value.speed = 1.5
+        value.selectedPlan = PlanChoice(fps: 8, slotCount: 4, cycle: 2)
+        value.manualSlots = [3, 2, 1, 2]
+        value.geometry[.medium]?.width = 280
+        value.background = CanvasColor(red: 1, green: 2, blue: 3)
+        value.rotation = 270; value.flipX = true; value.paletteColors = 32
+        let decoded = try JSONDecoder().decode(EditorSettings.self, from: JSONEncoder().encode(value))
+        XCTAssertEqual(decoded, value)
+    }
+
+    func testManualSlotEditsRecalculateFeasiblePlans() throws {
+        let four = AnimationPlanner.manualPlans(indices: [0, 1, 2, 3],
+            sourceCount: 20, pixelsPerFrame: 100)
+        XCTAssertFalse(four.isEmpty)
+        XCTAssertTrue(four.allSatisfy { $0.slotCount == 4 && $0.phaseCount % 4 == 0 })
+        let thirteen = AnimationPlanner.manualPlans(indices: Array(0..<13),
+            sourceCount: 20, pixelsPerFrame: 100)
+        XCTAssertTrue(thirteen.isEmpty)
+        let gif = try XCTUnwrap(Bundle(for: CoreTests.self).url(forResource: "test", withExtension: "gif"))
+        let importer = try GIFImporter(url: gif)
+        var settings = EditorSettings(id: UUID(), name: "Лента", sourceFile: "test.gif",
+                                      duration: importer.totalDuration)
+        let original = try XCTUnwrap(settings.availablePlans(importer: importer).first)
+        settings.selectedPlan = PlanChoice(original)
+        settings.manualSlots = Array(repeating: 0, count: 13)
+        XCTAssertTrue(try settings.availablePlans(importer: importer).isEmpty)
+        XCTAssertThrowsError(try settings.resolvedPlan(importer: importer)) {
+            XCTAssertEqual(($0 as? AppError)?.code, "E_PLAN_INVALID")
+        }
+    }
+
+    func testBundledGIFThroughRenderPipelineAndStore() throws {
+        let gif = try XCTUnwrap(Bundle(for: CoreTests.self).url(forResource: "test", withExtension: "gif"))
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent("editor-\(UUID().uuidString)")
+        addTeardownBlock { try? FileManager.default.removeItem(at: root) }
+        let documents = try ProjectDocuments(root: root.appendingPathComponent("documents"))
+        let settings = try documents.importBytes(Data(contentsOf: gif), name: "Test GIF")
+        let importer = try GIFImporter(url: documents.sourceURL(settings))
+        let plans = try settings.availablePlans(importer: importer)
+        XCTAssertTrue(plans.contains { settings.selectedPlan?.matches($0) ?? false })
+        let draft = try RenderPipeline.makeDraft(importer: importer, settings: settings)
+        XCTAssertEqual(draft.id, settings.id)
+        XCTAssertEqual(draft.variants.count, 3)
+        let store = ProjectStore(root: root.appendingPathComponent("published"))
+        try store.publish(draft)
+        for size in WidgetSize.allCases {
+            XCTAssertFalse(try store.read(settings.id, size: size).frames.isEmpty)
+        }
+    }
 }

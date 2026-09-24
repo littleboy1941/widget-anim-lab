@@ -66,9 +66,13 @@ struct AnimationProvider: AppIntentTimelineProvider {
     private func load(_ configuration: AnimationConfigurationIntent,
                       family: WidgetFamily) -> AnimationEntry {
         let date = Date()
-        guard let id = configuration.animation?.id else {
+        // Анимация не выбрана — показываем последнюю сохранённую (удобно сразу после
+        // добавления виджета; на этом же держится проверка в CI).
+        let latest = (try? ProjectStore(groupIdentifier: WidgetEnvironment.groupID))?
+            .list().max { $0.createdAt < $1.createdAt }?.id
+        guard let id = configuration.animation?.id ?? latest else {
             return AnimationEntry(date: date, configuration: configuration, snapshot: nil,
-                                  failure: .manifestInvalid("choose an animation"))
+                                  failure: .manifestInvalid("no animations yet: import one in the app"))
         }
         let size: WidgetSize
         switch family {

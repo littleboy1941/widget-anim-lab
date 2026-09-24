@@ -9,6 +9,7 @@ final class GIFImporter {
         let index: Int
         let startTime: Double
         let duration: Double
+        let rawDuration: Double
     }
 
     enum ImportError: Error {
@@ -22,6 +23,11 @@ final class GIFImporter {
     let frames: [FrameInfo]
     let totalDuration: Double
     let format: UTType
+    let canvasWidth: Int
+    let canvasHeight: Int
+    let fileBytes: Int
+    let correctedDelayCount: Int
+    let hasTransparency: Bool
     private let source: CGImageSource
 
     init(url: URL, maximumSourceFrames: Int = 10_000) throws {
@@ -36,24 +42,37 @@ final class GIFImporter {
             throw ImportError.unsupportedFormat
         }
         let count = CGImageSourceGetCount(source)
-        guard count > 0 && count <= maximumSourceFrames else {
+        guard count > 1 && count <= maximumSourceFrames else {
             throw ImportError.emptyAnimation
         }
         self.source = source
         self.format = format
+        let properties = CGImageSourceCopyPropertiesAtIndex(source, 0, nil) as? NSDictionary
+        canvasWidth = (properties?.object(forKey: kCGImagePropertyPixelWidth) as? NSNumber)?.intValue ?? 0
+        canvasHeight = (properties?.object(forKey: kCGImagePropertyPixelHeight) as? NSNumber)?.intValue ?? 0
+        fileBytes = (try? url.resourceValues(forKeys: [.fileSizeKey]).fileSize) ?? 0
+        let first = CGImageSourceCreateImageAtIndex(source, 0,
+            [kCGImageSourceShouldCache as String: false] as CFDictionary)
+        hasTransparency = first.map { [.first, .last, .premultipliedFirst, .premultipliedLast, .alphaOnly]
+            .contains($0.alphaInfo) } ?? false
 
         var infos: [FrameInfo] = []
         infos.reserveCapacity(count)
         var elapsed = 0.0
+        var corrected = 0
         for index in 0..<count {
             let properties = CGImageSourceCopyPropertiesAtIndex(source, index, nil) as? NSDictionary
-            let delay = Self.delay(properties: properties, format: format)
-            infos.append(FrameInfo(index: index, startTime: elapsed, duration: delay))
+            let raw = Self.delay(properties: properties, format: format)
+            let delay = raw.isFinite && raw >= 0.02 ? raw : 0.1
+            if delay != raw { corrected += 1 }
+            infos.append(FrameInfo(index: index, startTime: elapsed, duration: delay,
+                                   rawDuration: raw))
             elapsed += delay
         }
         guard elapsed.isFinite else { throw ImportError.emptyAnimation }
         frames = infos
         totalDuration = elapsed
+        correctedDelayCount = corrected
     }
 
     /// Одновременно держать только один thumbnail; вызывающий код сразу
@@ -68,6 +87,15 @@ final class GIFImporter {
             kCGImageSourceShouldCache as String: false
         ]
         guard let image = CGImageSourceCreateThumbnailAtIndex(source, index, options as CFDictionary) else {
+            throw ImportError.decodeFailed(index)
+        }
+        return image
+    }
+
+    func frame(at index: Int) throws -> CGImage {
+        guard frames.indices.contains(index),
+              let image = CGImageSourceCreateImageAtIndex(source, index,
+                  [kCGImageSourceShouldCache as String: false] as CFDictionary) else {
             throw ImportError.decodeFailed(index)
         }
         return image
@@ -97,6 +125,6 @@ final class GIFImporter {
             ?? (properties?.object(forKey: clampedKey) as? NSNumber)?.doubleValue
         let value = raw ?? clamped ?? 0.1
         // Распространённое браузерное правило: 0–10 мс показывать 100 мс.
-        return value.isFinite && value >= 0.02 ? value : 0.1
+        return value
     }
 }

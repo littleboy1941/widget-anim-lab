@@ -1,6 +1,6 @@
 import Foundation
 
-enum LoopMode { case forward, reverse, pingPong }
+enum LoopMode: String, Codable, CaseIterable, Hashable { case forward, reverse, pingPong }
 
 enum AnimationPlanner {
     struct Plan: Equatable {
@@ -17,6 +17,40 @@ enum AnimationPlanner {
     }
 
     enum PlanningError: Error { case invalidInput, noFeasiblePlan }
+
+    /// Rebuild the geometric plan after a manual slot edit. The chosen N is never
+    /// silently changed to fit a cycle.
+    static func manualPlans(indices: [Int], sourceCount: Int, pixelsPerFrame: Int,
+                            budget: AnimationBudget = .standard) -> [Plan] {
+        guard !indices.isEmpty, sourceCount > 0,
+              indices.allSatisfy({ (0..<sourceCount).contains($0) }),
+              pixelsPerFrame > 0, pixelsPerFrame <= Int.max / 4,
+              pixelsPerFrame <= (budget.maxPixels.values.max() ?? 0) else { return [] }
+        var unique: [Int] = []
+        var lookup: [Int: Int] = [:]
+        let slotToFrame = indices.map { index -> Int in
+            if let found = lookup[index] { return found }
+            let next = unique.count
+            unique.append(index)
+            lookup[index] = next
+            return next
+        }
+        guard unique.count <= budget.maxDecodedBytes / (pixelsPerFrame * 4) else { return [] }
+        var result: [Plan] = []
+        for fps in budget.minFPS...budget.maxFPS {
+            for cycle in AnimationBudget.supportedCycles where 60 % cycle == 0 {
+                let phases = fps * cycle
+                guard phases <= budget.maxPhases, phases % indices.count == 0 else { continue }
+                let repeated = slotToFrame.flatMap {
+                    Array(repeating: $0, count: phases / indices.count)
+                }
+                result.append(Plan(fps: fps, slotCount: indices.count, cycle: cycle,
+                                   sourceIndices: indices, uniqueSourceIndices: unique,
+                                   phaseToFrame: repeated))
+            }
+        }
+        return result
+    }
 
     /// Enumerates every geometrically and memory-feasible (fps, N, C) combination.
     static func allPlans(durations: [Double], speed: Double, mode: LoopMode,

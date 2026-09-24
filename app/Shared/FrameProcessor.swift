@@ -7,10 +7,21 @@ enum FrameProcessor {
 
     struct Options {
         var size: Int = 300
+        var width: Int? = nil
+        var height: Int? = nil
         var layout: Layout = .fit
         var style: Style = .automatic
         var paletteColors: Int? = nil
         var transparentAlphaThreshold: UInt8 = 8
+        var offsetX: Double = 0
+        var offsetY: Double = 0
+        var zoom: Double = 1
+        var rotation: Int = 0
+        var flipX = false
+        var flipY = false
+        var brightness: Double = 0
+        var contrast: Double = 1
+        var background: CanvasColor? = nil
     }
 
     enum ProcessingError: Error {
@@ -19,48 +30,79 @@ enum FrameProcessor {
     }
 
     static func process(_ image: CGImage, options: Options) throws -> CGImage {
-        guard (1...400).contains(options.size),
+        let outputWidth = options.width ?? options.size
+        let outputHeight = options.height ?? options.size
+        guard (1...2048).contains(outputWidth), (1...2048).contains(outputHeight),
+              outputWidth <= 1_000_000 / outputHeight,
+              options.offsetX.isFinite, options.offsetY.isFinite,
+              options.zoom.isFinite, (0.1...8).contains(options.zoom),
+              [0, 90, 180, 270].contains(options.rotation),
+              options.brightness.isFinite, (-1...1).contains(options.brightness),
+              options.contrast.isFinite, (0...3).contains(options.contrast),
               options.paletteColors.map({ (16...64).contains($0) }) ?? true else {
             throw ProcessingError.invalidOptions
         }
         let pixelArt = options.style == .pixelArt ||
             (options.style == .automatic && looksLikePixelArt(image))
-        guard let context = makeContext(width: options.size, height: options.size) else {
+        guard let context = makeContext(width: outputWidth, height: outputHeight) else {
             throw ProcessingError.contextFailed
         }
-        context.clear(CGRect(x: 0, y: 0, width: options.size, height: options.size))
+        context.clear(CGRect(x: 0, y: 0, width: outputWidth, height: outputHeight))
         context.interpolationQuality = pixelArt ? .none : .high
 
         let sourceWidth = CGFloat(image.width)
         let sourceHeight = CGFloat(image.height)
-        let target = CGFloat(options.size)
+        let quarterTurn = options.rotation == 90 || options.rotation == 270
+        let visualWidth = quarterTurn ? sourceHeight : sourceWidth
+        let visualHeight = quarterTurn ? sourceWidth : sourceHeight
         let ratio = options.layout == .fit
-            ? min(target / sourceWidth, target / sourceHeight)
-            : max(target / sourceWidth, target / sourceHeight)
+            ? min(CGFloat(outputWidth) / visualWidth, CGFloat(outputHeight) / visualHeight)
+            : max(CGFloat(outputWidth) / visualWidth, CGFloat(outputHeight) / visualHeight)
         let scale: CGFloat
-        if pixelArt && ratio >= 1 {
-            scale = options.layout == .fit ? floor(ratio) : ceil(ratio)
+        let wanted = ratio * CGFloat(options.zoom)
+        if pixelArt && wanted >= 1 {
+            scale = options.layout == .fit ? max(1, floor(wanted)) : ceil(wanted)
         } else {
-            scale = ratio
+            scale = wanted
         }
-        let width = sourceWidth * max(scale, 1 / max(sourceWidth, sourceHeight))
-        let height = sourceHeight * max(scale, 1 / max(sourceWidth, sourceHeight))
-        let rect = CGRect(x: (target - width) / 2, y: (target - height) / 2,
-                          width: width, height: height)
-        context.draw(image, in: rect)
+        context.translateBy(x: CGFloat(outputWidth) / 2 + CGFloat(options.offsetX) * CGFloat(outputWidth) / 2,
+                            y: CGFloat(outputHeight) / 2 + CGFloat(options.offsetY) * CGFloat(outputHeight) / 2)
+        context.scaleBy(x: options.flipX ? -1 : 1, y: options.flipY ? -1 : 1)
+        context.rotate(by: CGFloat(options.rotation) * .pi / 180)
+        let width = sourceWidth * scale
+        let height = sourceHeight * scale
+        context.draw(image, in: CGRect(x: -width / 2, y: -height / 2,
+                                       width: width, height: height))
 
         guard let raw = context.data else { throw ProcessingError.contextFailed }
         let bytes = raw.assumingMemoryBound(to: UInt8.self)
-        let pixelCount = options.size * options.size
-        for i in 0..<pixelCount where bytes[i * 4 + 3] < options.transparentAlphaThreshold {
+        let pixelCount = outputWidth * outputHeight
+        for i in 0..<pixelCount {
             let offset = i * 4
-            bytes[offset] = 0
-            bytes[offset + 1] = 0
-            bytes[offset + 2] = 0
-            bytes[offset + 3] = 0
+            let alpha = Int(bytes[offset + 3])
+            if alpha < Int(options.transparentAlphaThreshold) {
+                for channel in 0..<4 { bytes[offset + channel] = 0 }
+            } else if alpha > 0 && (options.brightness != 0 || options.contrast != 1) {
+                for channel in 0..<3 {
+                    let straight = Double(bytes[offset + channel]) / Double(alpha)
+                    let adjusted = ((straight - 0.5) * options.contrast + 0.5 + options.brightness)
+                        .clamped(to: 0...1)
+                    bytes[offset + channel] = UInt8(clamping: Int((adjusted * Double(alpha)).rounded()))
+                }
+            }
         }
         if let colors = options.paletteColors {
             quantize(bytes: bytes, pixelCount: pixelCount, colors: colors)
+        }
+        if let bg = options.background {
+            for i in 0..<pixelCount {
+                let p = i * 4
+                let remaining = 255 - Int(bytes[p + 3])
+                bytes[p] = UInt8(clamping: Int(bytes[p]) + Int(bg.red) * remaining / 255)
+                bytes[p + 1] = UInt8(clamping: Int(bytes[p + 1]) + Int(bg.green) * remaining / 255)
+                bytes[p + 2] = UInt8(clamping: Int(bytes[p + 2]) + Int(bg.blue) * remaining / 255)
+                bytes[p + 3] = 255
+            }
         }
         guard let result = context.makeImage() else { throw ProcessingError.contextFailed }
         return result
@@ -191,5 +233,11 @@ enum FrameProcessor {
         let dg = a.g - b.g
         let db = a.b - b.b
         return dr * dr + dg * dg + db * db
+    }
+}
+
+private extension Double {
+    func clamped(to range: ClosedRange<Double>) -> Double {
+        min(max(self, range.lowerBound), range.upperBound)
     }
 }
