@@ -14,7 +14,8 @@ enum RenderPipeline {
     static func sizeError(_ size: WidgetSize, settings: EditorSettings,
                           plan: AnimationPlanner.Plan,
                           budget: AnimationBudget = .standard) -> AppError? {
-        guard let geometry = settings.geometry[size], geometry.width > 0, geometry.height > 0,
+        guard let geometry = settings.geometry[size],
+              FrameProcessor.validDimensions(geometry.width, geometry.height),
               let limit = budget.maxPixels[size],
               geometry.width <= limit / geometry.height else {
             return AppError(code: "E_BUDGET_PIXELS", message: "\(size.rawValue): разрешение превышает бюджет.",
@@ -48,8 +49,10 @@ enum RenderPipeline {
         let ordered = WidgetSize.allCases.filter { sizes.contains($0) }
         let total = ordered.count * plan.uniqueSourceIndices.count
         var completed = 0
+        let style = try resolvedStyle(importer: importer, settings: settings, plan: plan)
         for size in ordered {
-            let options = try settings.frameOptions(for: size)
+            var options = try settings.frameOptions(for: size)
+            options.style = style
             var png: [Data] = []
             for index in plan.uniqueSourceIndices {
                 try Task.checkCancellation()
@@ -68,7 +71,7 @@ enum RenderPipeline {
             variants[size] = VariantDraft(width: geometry.width, height: geometry.height,
                 fps: plan.fps, cycle: plan.cycle, slotCount: plan.slotCount,
                 phaseToFrame: plan.phaseToFrame, overlapSeconds: budget.overlapSeconds,
-                background: settings.background, pixelArt: settings.style == .pixelArt,
+                background: settings.background, pixelArt: style == .pixelArt,
                 pngData: png)
         }
         return ProjectDraft(id: settings.id, name: settings.name, createdAt: .now,
@@ -82,12 +85,23 @@ enum RenderPipeline {
         let key = "\(digest):\(size.rawValue):\(sourceIndex)" as NSString
         if let cached = thumbnailCache.object(forKey: key) { return cached as Data }
         try Task.checkCancellation()
-        let options = try settings.frameOptions(for: size, preview: true)
-        let source = try importer.thumbnail(at: sourceIndex, maxPixelSize: 600)
+        let plan = try settings.resolvedPlan(importer: importer)
+        var options = try settings.frameOptions(for: size)
+        options.style = try resolvedStyle(importer: importer, settings: settings, plan: plan)
+        let source = try importer.frame(at: sourceIndex)
         let processed = try FrameProcessor.process(source, options: options)
         let data = try pngData(processed)
         thumbnailCache.setObject(data as NSData, forKey: key, cost: data.count)
         return data
+    }
+
+    static func resolvedStyle(importer: GIFImporter, settings: EditorSettings,
+                              plan: AnimationPlanner.Plan) throws -> FrameProcessor.Style {
+        guard let first = plan.uniqueSourceIndices.first else {
+            throw AppError(code: "E_PLAN_INVALID", message: "В плане нет кадров.", hint: "Выберите другой план.")
+        }
+        let source = try importer.frame(at: first)
+        return FrameProcessor.effectiveStyle(source, requested: settings.style)
     }
 
     private static func pngData(_ image: CGImage) throws -> Data {

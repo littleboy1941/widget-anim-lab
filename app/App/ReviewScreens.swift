@@ -15,6 +15,9 @@ struct ReviewView: View {
     @State private var worker: Task<Void, Never>?
     @State private var seamImages: [UIImage] = []
     @State private var seamDifferent = false
+    @State private var seamError: AppError?
+    @State private var seamWorker: Task<Void, Never>?
+    @State private var seamRequest = UUID()
 
     private var sizeErrors: [WidgetSize: AppError] {
         guard let settings, let plan else { return [:] }
@@ -60,6 +63,7 @@ struct ReviewView: View {
                             compromise("На стыке возможен скачок. Попробуйте петлю «туда-обратно».")
                         }
                     }
+                    if let seamError { AppErrorView(error: seamError) }
                     Text("РАЗМЕРЫ").font(.system(size: 12, design: .monospaced))
                         .foregroundStyle(.secondary)
                     ForEach(WidgetSize.allCases, id: \.self) { size in
@@ -90,7 +94,7 @@ struct ReviewView: View {
                 if let error { AppErrorView(error: error) }
                 if publishing {
                     ProgressView(value: progress)
-                    Button("Отменить") { worker?.cancel(); publishing = false }
+                    Button("Отменить") { worker?.cancel() }
                 }
                 Button("Сохранить") { publish() }
                     .buttonStyle(.borderedProminent)
@@ -101,7 +105,7 @@ struct ReviewView: View {
         .background(.black)
         .navigationTitle("Проверка")
         .task(id: id) { await load() }
-        .onDisappear { worker?.cancel() }
+        .onDisappear { worker?.cancel(); seamWorker?.cancel() }
     }
 
     private func compromise(_ value: String) -> some View {
@@ -117,27 +121,47 @@ struct ReviewView: View {
             }.value
             settings = result.0; importer = result.1
             refreshPlan()
-            if let plan, let firstIndex = plan.sourceIndices.first,
-               let lastIndex = plan.sourceIndices.last {
-                let value = try? await Task.detached(priority: .utility) { () -> (Data, Data) in
-                    let last = try RenderPipeline.previewFrame(importer: result.1,
-                        settings: result.0, size: .small, sourceIndex: lastIndex)
-                    let first = try RenderPipeline.previewFrame(importer: result.1,
-                        settings: result.0, size: .small, sourceIndex: firstIndex)
-                    return (last, first)
-                }.value
-                if let value, let last = UIImage(data: value.0), let first = UIImage(data: value.1) {
-                    seamImages = [last, first]
-                    seamDifferent = value.0 != value.1
-                }
-            }
         } catch { self.error = AppError.convert(error) }
+    }
+
+    private func refreshSeam() {
+        seamWorker?.cancel()
+        seamRequest = UUID()
+        let request = seamRequest
+        seamImages = []
+        seamError = nil
+        guard let settings, let importer, let plan,
+              let firstIndex = plan.sourceIndices.first,
+              let lastIndex = plan.sourceIndices.last else { return }
+        seamWorker = Task.detached(priority: .utility) {
+            do {
+                let lastData = try RenderPipeline.previewFrame(importer: importer,
+                    settings: settings, size: .small, sourceIndex: lastIndex)
+                try Task.checkCancellation()
+                let firstData = try RenderPipeline.previewFrame(importer: importer,
+                    settings: settings, size: .small, sourceIndex: firstIndex)
+                guard let last = UIImage(data: lastData), let first = UIImage(data: firstData) else {
+                    throw AppError(code: "E_PREVIEW_FRAME", message: "Не декодированы кадры стыка.",
+                                   hint: "Проверьте исходный файл.")
+                }
+                try Task.checkCancellation()
+                await MainActor.run {
+                    guard seamRequest == request else { return }
+                    seamImages = [last, first]
+                    seamDifferent = lastData != firstData
+                }
+            } catch is CancellationError {
+            } catch {
+                let value = AppError.convert(error)
+                await MainActor.run { if seamRequest == request { seamError = value } }
+            }
+        }
     }
 
     private func refreshPlan() {
         guard let settings, let importer else { return }
-        do { plan = try settings.resolvedPlan(importer: importer); error = nil }
-        catch { plan = nil; self.error = AppError.convert(error) }
+        do { plan = try settings.resolvedPlan(importer: importer); error = nil; refreshSeam() }
+        catch { plan = nil; self.error = AppError.convert(error); refreshSeam() }
     }
 
     private func fixResolution(_ size: WidgetSize) {
@@ -148,8 +172,8 @@ struct ReviewView: View {
         let allowed = max(1, min(pixelBudget, memoryPixels))
         let current = max(1, geometry.width * geometry.height)
         let scale = min(0.9, sqrt(Double(allowed) / Double(current)) * 0.98)
-        geometry.width = max(32, Int(Double(geometry.width) * scale))
-        geometry.height = max(32, Int(Double(geometry.height) * scale))
+        geometry.width = min(2048, max(1, Int(Double(geometry.width) * scale)))
+        geometry.height = min(2048, max(1, Int(Double(geometry.height) * scale)))
         settings.geometry[size] = geometry
         self.settings = settings
         do { try ProjectDocuments().save(settings); refreshPlan() }
@@ -160,7 +184,9 @@ struct ReviewView: View {
         guard var settings, let importer else { return }
         do {
             let plans = try settings.availablePlans(importer: importer)
-            guard let choice = plans.min(by: { $0.phaseCount < $1.phaseCount }) else {
+            let sourceCount = importer.frames.count
+            guard let choice = AnimationPlanner.reliablePlan(from: plans,
+                sourceFrameCount: sourceCount) else {
                 throw AppError(code: "E_PLAN_INVALID", message: "Нет допустимого плана.",
                                hint: "Вернитесь в редактор и сократите ленту.")
             }
@@ -186,10 +212,13 @@ struct ReviewView: View {
                 try Task.checkCancellation()
                 let store = try ProjectStore(groupIdentifier: AppGroup.identifier)
                 try store.publish(draft)
+                try Task.checkCancellation()
                 WidgetCenter.shared.reloadAllTimelines()
                 DiagnosticsLog(root: store.root).append(event: "reload_sent", projectID: id,
                                                       detail: Date().description)
                 await MainActor.run { publishing = false; onSaved() }
+            } catch is CancellationError {
+                await MainActor.run { publishing = false }
             } catch {
                 let value = AppError.convert(error)
                 await MainActor.run { publishing = false; self.error = value }
@@ -225,7 +254,8 @@ struct DoneView: View {
         .background(.black)
         .navigationTitle("Готово")
         .task {
-            manifest = try? ProjectStore(groupIdentifier: AppGroup.identifier).list().first { $0.id == id }
+            manifest = try? ProjectStore(groupIdentifier: AppGroup.identifier)
+                .listing().projects.first { $0.id == id }
         }
     }
 

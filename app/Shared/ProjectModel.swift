@@ -8,6 +8,7 @@ enum WidgetSize: String, Codable, CaseIterable, Hashable {
 struct AnimationBudget: Codable, Equatable {
     var maxPhases = 40
     var maxPixels: [WidgetSize: Int] = [.small: 90_000, .medium: 120_000, .large: 160_000]
+    // TODO: Measure peak widget RSS/jetsam on a real iPhone before revising this budget.
     var maxDecodedBytes = 16 * 1_048_576
     var maxPNGBytes = 4 * 1_048_576
     var minFPS = 4

@@ -43,7 +43,8 @@ jobs:
           xcodebuild test -project WidgetLab.xcodeproj -scheme WidgetLabHome -destination "id=$DEV" \
             -derivedDataPath ci-out/home-build CODE_SIGN_IDENTITY=- CODE_SIGNING_ALLOWED=YES CODE_SIGNING_REQUIRED=NO \
             > "$OUT/uitest.log" 2>&1
-          echo "UI-тест: код $?" | tee "$OUT/result.txt"
+          TEST_STATUS=$?
+          echo "UI-тест: код $TEST_STATUS" | tee "$OUT/result.txt"
           grep -E "error:|Test Case|failed|passed" "$OUT/uitest.log" | tail -30
 
           xcrun simctl terminate "$DEV" com.widgetlab.app 2>/dev/null || true
@@ -64,6 +65,7 @@ jobs:
           find ~/Library/Logs/DiagnosticReports -name "*WidgetLab*" -exec cp {} "$OUT/crash/" \; 2>/dev/null
           ls "$OUT" "$OUT/crash"
           xcrun simctl shutdown "$DEV" || true
+          exit "$TEST_STATUS"
 
       - uses: actions/upload-artifact@v4
         if: always()

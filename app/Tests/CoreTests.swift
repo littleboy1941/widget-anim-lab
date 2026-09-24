@@ -52,6 +52,49 @@ final class CoreTests: XCTestCase {
         XCTAssertTrue(plans.contains { $0.uniqueSourceIndices.count < $0.slotCount })
     }
 
+    func testFragmentUsesIntersectionDurations() {
+        let first = EditorSettings.intersectionDuration(frameStart: 0, frameDuration: 0.1,
+            fragmentStart: 0.09, fragmentEnd: 0.15)
+        let second = EditorSettings.intersectionDuration(frameStart: 0.1, frameDuration: 0.1,
+            fragmentStart: 0.09, fragmentEnd: 0.15)
+        XCTAssertEqual(first, 0.01, accuracy: 0.000_001)
+        XCTAssertEqual(second, 0.05, accuracy: 0.000_001)
+    }
+
+    func testReliablePresetKeepsAnimation() throws {
+        let plans = try AnimationPlanner.allPlans(durations: [0.1, 0.1, 0.1],
+            speed: 1, mode: .forward, pixelsPerFrame: 4)
+        let selected = try XCTUnwrap(AnimationPlanner.reliablePlan(from: plans,
+            sourceFrameCount: 3))
+        XCTAssertGreaterThanOrEqual(selected.uniqueSourceIndices.count, 2)
+        XCTAssertEqual(AnimationPlanner.reliablePlan(from: plans.filter {
+            $0.uniqueSourceIndices.count == 1
+        }, sourceFrameCount: 3), nil)
+    }
+
+    func testSourceLimitsAndOutputDimensions() throws {
+        XCTAssertNoThrow(try GIFImporter.validateSource(width: 10_000, height: 8_000,
+            bytes: 150_000_000))
+        XCTAssertThrowsError(try GIFImporter.validateSource(width: 10_000, height: 8_001,
+            bytes: 1)) {
+            XCTAssertEqual(AppError.convert($0).code, "E_SOURCE_PIXELS")
+        }
+        XCTAssertThrowsError(try GIFImporter.validateSource(width: 1, height: 1,
+            bytes: 150_000_001)) {
+            XCTAssertEqual(AppError.convert($0).code, "E_SOURCE_TOO_LARGE")
+        }
+        XCTAssertFalse(FrameProcessor.validDimensions(3_000, 20))
+        XCTAssertTrue(FrameProcessor.validDimensions(2_048, 20))
+        var settings = EditorSettings(id: UUID(), name: "Размер", sourceFile: "source.gif",
+            duration: 1)
+        settings.geometry[.small] = OutputGeometry(width: 3_000, height: 20, layout: .fit)
+        let plan = AnimationPlanner.Plan(fps: 4, slotCount: 2, cycle: 2,
+            sourceIndices: [0, 1], uniqueSourceIndices: [0, 1],
+            phaseToFrame: [0, 1, 0, 1, 0, 1, 0, 1])
+        XCTAssertEqual(RenderPipeline.sizeError(.small, settings: settings, plan: plan)?.code,
+                       "E_BUDGET_PIXELS")
+    }
+
     func testPingPongDoesNotRepeatEndpoints() throws {
         let plans = try AnimationPlanner.allPlans(durations: [1, 1, 1, 1],
                                                    speed: 1, mode: .pingPong,
@@ -75,14 +118,50 @@ final class CoreTests: XCTestCase {
         let store = tempStore()
         let input = draft()
         try store.publish(input)
-        XCTAssertEqual(store.list().map(\.id), [input.id])
+        XCTAssertEqual(try store.listing().projects.map(\.id), [input.id])
         XCTAssertThrowsError(try store.publish(draft(id: input.id, bytes: Data("bad".utf8))))
         XCTAssertEqual(try store.read(input.id, size: .small).manifest.name, "Fixture")
         try store.delete(input.id)
-        XCTAssertTrue(store.list().isEmpty)
+        XCTAssertTrue(try store.listing().projects.isEmpty)
         XCTAssertThrowsError(try store.read(input.id, size: .small)) {
             XCTAssertEqual($0 as? ProjectReadError, .projectDeleted)
         }
+    }
+
+    func testGenerationCleanupKeepsOnlyCurrent() throws {
+        let store = tempStore()
+        let id = UUID()
+        try store.publish(draft(id: id))
+        let first = try XCTUnwrap(store.listing().projects.first).generation
+        try store.publish(draft(id: id))
+        let second = try XCTUnwrap(store.listing().projects.first).generation
+        let directory = store.root.appendingPathComponent(id.uuidString.lowercased())
+        XCTAssertNotEqual(first, second)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: directory
+            .appendingPathComponent(first.uuidString.lowercased()).path))
+        XCTAssertTrue(FileManager.default.fileExists(atPath: directory
+            .appendingPathComponent(second.uuidString.lowercased()).path))
+        try store.delete(id)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: directory.path))
+    }
+
+    func testPixelScaleSkipsSolidFirstFrame() throws {
+        let format = UIGraphicsImageRendererFormat()
+        format.scale = 1
+        let solid = UIGraphicsImageRenderer(size: CGSize(width: 8, height: 4),
+            format: format).image { context in
+                context.cgContext.setFillColor(UIColor.red.cgColor)
+                context.cgContext.fill(CGRect(x: 0, y: 0, width: 8, height: 4))
+            }
+        let patterned = UIGraphicsImageRenderer(size: CGSize(width: 8, height: 4),
+            format: format).image { context in
+                context.cgContext.setFillColor(UIColor.red.cgColor)
+                context.cgContext.fill(CGRect(x: 0, y: 0, width: 4, height: 4))
+                context.cgContext.setFillColor(UIColor.blue.cgColor)
+                context.cgContext.fill(CGRect(x: 4, y: 0, width: 4, height: 4))
+            }
+        let images = [try XCTUnwrap(solid.cgImage), try XCTUnwrap(patterned.cgImage)]
+        XCTAssertEqual(PixelArtScale.detectConsistent(images), 4)
     }
 
     func testTypedReadErrors() throws {

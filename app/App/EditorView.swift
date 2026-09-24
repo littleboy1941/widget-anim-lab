@@ -30,6 +30,7 @@ struct EditorView: View {
     @State private var nativeInfo: String?
     @State private var plans: [AnimationPlanner.Plan] = []
     @State private var previewFrames: [UIImage] = []
+    @State private var previewPixelArt = false
     @State private var sourceImage: UIImage?
     @State private var selectedSize: WidgetSize = .small
     @State private var theme: PreviewTheme = .dark
@@ -138,8 +139,9 @@ struct EditorView: View {
                     if showSource, let sourceImage {
                         Image(uiImage: sourceImage).resizable().scaledToFit()
                     } else if count > 0 {
-                        Image(uiImage: previewFrames[index]).resizable()
-                            .interpolation(settings?.style == .pixelArt ? .none : .high).scaledToFit()
+                        WidgetFramePlacement(image: previewFrames[index],
+                            width: geometry.width, height: geometry.height,
+                            pixelArt: previewPixelArt)
                     } else {
                         ProgressView("Готовлю превью…")
                     }
@@ -147,7 +149,16 @@ struct EditorView: View {
                 .colorMultiply(theme == .tinted ? Color.cyan : Color.white)
                 .saturation(theme == .tinted ? 0 : 1)
                 .frame(width: min(260, 220 * aspect), height: min(260, 220 / aspect))
-                .background(theme == .light ? Color.white : Color(white: 0.08))
+                .background {
+                    if let color = settings?.background {
+                        Color(red: Double(color.red) / 255,
+                              green: Double(color.green) / 255,
+                              blue: Double(color.blue) / 255)
+                    } else {
+                        Rectangle().fill(.fill.tertiary)
+                    }
+                }
+                .environment(\.colorScheme, theme == .light ? .light : .dark)
                 .clipShape(RoundedRectangle(cornerRadius: 24))
                 .overlay(RoundedRectangle(cornerRadius: 24).stroke(.white.opacity(0.2)))
             }
@@ -196,7 +207,7 @@ struct EditorView: View {
                     $0.fps == $1.fps ? $0.slotCount < $1.slotCount : $0.fps < $1.fps
                 })
                 preset("Баланс", plan: balancedPlan)
-                preset("Надёжно", plan: plans.min { $0.phaseCount < $1.phaseCount })
+                preset("Надёжно", plan: reliablePlan)
             }
             Button("Все планы (\(plans.count))") { showPlans = true }
             Picker("Петля", selection: Binding(get: { settings?.loop ?? .forward }, set: { mode in
@@ -218,9 +229,15 @@ struct EditorView: View {
 
     private var balancedPlan: AnimationPlanner.Plan? {
         guard let importer, let settings else { return nil }
-        let durations = settings.selectedFrameIndices(in: importer).map { importer.frames[$0].duration }
+        let durations = settings.selectedFrameDurations(in: importer)
         return AnimationPlanner.defaultPlan(from: plans, durations: durations,
                                             speed: settings.speed, mode: settings.loop)
+    }
+
+    private var reliablePlan: AnimationPlanner.Plan? {
+        guard let importer else { return nil }
+        return AnimationPlanner.reliablePlan(from: plans,
+            sourceFrameCount: importer.frames.count)
     }
 
     private func preset(_ title: String, plan: AnimationPlanner.Plan?) -> some View {
@@ -407,27 +424,43 @@ struct EditorView: View {
         }
     }
 
-    /// Родной размер пиксель-арта: холст / k, где k — размер одноцветных блоков первого кадра.
+    /// Родной размер пиксель-арта по нескольким содержательным кадрам.
     private func useNativePixels() {
         guard let importer else { return }
         let side = max(importer.canvasWidth, importer.canvasHeight)
-        guard side > 0, let first = try? importer.thumbnail(at: 0, maxPixelSize: min(side, 2048)) else {
-            error = AppError(code: "E_READ_FAILED", message: "Не прочитан первый кадр для определения пикселей.",
-                             hint: "Попробуйте другой исходник.")
+        guard side > 0, side <= 2048 else {
+            error = AppError(code: "E_PIXEL_SCALE_UNKNOWN", message: "Для холста больше 2048 px определить блок нельзя.",
+                             hint: "Задайте разрешение вручную.")
             return
         }
-        let k = PixelArtScale.detect(first)
-        let width = max(1, first.width / k), height = max(1, first.height / k)
-        change { settings in
-            settings.style = .pixelArt
-            for size in WidgetSize.allCases {
-                var g = settings.geometry[size] ?? OutputGeometry.initial(size)
-                g.width = width; g.height = height; g.layout = .fit
-                g.offsetX = 0; g.offsetY = 0; g.zoom = 1
-                settings.geometry[size] = g
+        do {
+            var images: [CGImage] = []
+            var signatures = Set<UInt64>()
+            let indices = settings?.selectedFrameIndices(in: importer) ?? importer.frames.map(\.index)
+            for index in indices {
+                let image = try importer.thumbnail(at: index, maxPixelSize: side)
+                guard let signature = PixelArtScale.contentSignature(image),
+                      signatures.insert(signature).inserted else { continue }
+                images.append(image)
+                if images.count >= 3 { break }
             }
-        }
-        nativeInfo = "Блок \(k)×\(k) → \(width)×\(height) px"
+            guard let k = PixelArtScale.detectConsistent(images) else {
+                throw AppError(code: "E_PIXEL_SCALE_UNKNOWN", message: "Нет содержательных кадров для определения блока.",
+                               hint: "Задайте разрешение вручную.")
+            }
+            let width = max(1, importer.canvasWidth / k)
+            let height = max(1, importer.canvasHeight / k)
+            change { settings in
+                settings.style = .pixelArt
+                for size in WidgetSize.allCases {
+                    var g = settings.geometry[size] ?? OutputGeometry.initial(size)
+                    g.width = width; g.height = height; g.layout = .fit
+                    g.offsetX = 0; g.offsetY = 0; g.zoom = 1
+                    settings.geometry[size] = g
+                }
+            }
+            nativeInfo = "Блок \(k)×\(k) → \(width)×\(height) px"
+        } catch { self.error = AppError.convert(error) }
     }
 
     private func geometry(_ edit: (inout OutputGeometry) -> Void) {
@@ -462,7 +495,7 @@ struct EditorView: View {
         if let importer {
             plans = (try? value.availablePlans(importer: importer)) ?? []
             if !plans.contains(where: { value.selectedPlan?.matches($0) ?? false }) {
-                let durations = value.selectedFrameIndices(in: importer).map { importer.frames[$0].duration }
+                let durations = value.selectedFrameDurations(in: importer)
                 value.selectedPlan = (AnimationPlanner.defaultPlan(from: plans,
                     durations: durations, speed: value.speed, mode: value.loop) ?? plans.first)
                     .map(PlanChoice.init)
@@ -515,6 +548,8 @@ struct EditorView: View {
             do {
                 let documents = try ProjectDocuments()
                 let importer = try GIFImporter(url: documents.sourceURL(settings))
+                let style = try RenderPipeline.resolvedStyle(importer: importer,
+                    settings: settings, plan: plan)
                 var cache: [Int: UIImage] = [:]
                 var frames: [UIImage] = []
                 for index in plan.sourceIndices {
@@ -522,12 +557,24 @@ struct EditorView: View {
                     if cache[index] == nil {
                         let data = try RenderPipeline.previewFrame(importer: importer,
                             settings: settings, size: size, sourceIndex: index)
-                        cache[index] = UIImage(data: data)
+                        guard let image = UIImage(data: data) else {
+                            throw AppError(code: "E_PREVIEW_FRAME", message: "Не декодирован кадр источника \(index).",
+                                           hint: "Проверьте исходный файл.")
+                        }
+                        cache[index] = image
                     }
-                    if let image = cache[index] { frames.append(image) }
+                    guard let image = cache[index] else {
+                        throw AppError(code: "E_PREVIEW_FRAME", message: "Нет кадра источника \(index) в превью.",
+                                       hint: "Проверьте исходный файл.")
+                    }
+                    frames.append(image)
                 }
                 try Task.checkCancellation()
-                await MainActor.run { previewFrames = frames; playbackStart = .now }
+                await MainActor.run {
+                    previewFrames = frames
+                    previewPixelArt = style == .pixelArt
+                    playbackStart = .now
+                }
             } catch is CancellationError {
             } catch {
                 let value = AppError.convert(error)

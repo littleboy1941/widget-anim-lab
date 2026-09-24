@@ -142,7 +142,7 @@ struct DevPanelView: View {
             let id = settings.id
             let value = try await Task.detached(priority: .utility) { () -> (ProjectManifest?, [DiagnosticEvent], [WidgetSize: String], Int64?) in
                 let store = try ProjectStore(groupIdentifier: AppGroup.identifier)
-                let manifest = store.list().first { $0.id == id }
+                let manifest = try store.listing().projects.first { $0.id == id }
                 var checks: [WidgetSize: String] = [:]
                 if let manifest {
                     for size in manifest.variants.keys {

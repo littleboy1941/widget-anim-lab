@@ -28,6 +28,8 @@ struct AppErrorView: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(10)
         .background(Color.red.opacity(0.1), in: RoundedRectangle(cornerRadius: 10))
+        .accessibilityElement(children: .combine)
+        .accessibilityIdentifier("AppErrorView")
         .onAppear { record() }
         .onChange(of: error.id) { _, _ in record() }
     }
@@ -66,6 +68,7 @@ struct ProjectListView: View {
     @State private var path: [AppRoute] = []
     @State private var rows: [LibraryRow] = []
     @State private var error: AppError?
+    @State private var diagnostics: [UUID: AppError] = [:]
     @State private var pendingDelete: UUID?
     @State private var ciStatus: String?
     private let groupID = AppGroup.identifier
@@ -75,6 +78,12 @@ struct ProjectListView: View {
             List {
                     Text("\(rows.count) проектов").font(.caption).foregroundStyle(.secondary)
                     if let error { AppErrorView(error: error) }
+                    ForEach(diagnostics.keys.sorted(by: { $0.uuidString < $1.uuidString }), id: \.self) { id in
+                        if let failure = diagnostics[id] {
+                            Text(id.uuidString).font(.caption.monospaced()).foregroundStyle(.red)
+                            AppErrorView(error: failure)
+                        }
+                    }
                     ForEach(rows) { row in
                         NavigationLink(value: AppRoute.editor(row.id)) {
                             HStack(spacing: 12) {
@@ -213,8 +222,10 @@ struct ProjectListView: View {
             do {
                 let store = try ProjectStore(groupIdentifier: groupID)
                 let documents = try ProjectDocuments()
-                let manifests = store.list()
-                let editable = documents.list()
+                let published = try store.listing()
+                let manifests = published.projects
+                let editableListing = try documents.list()
+                let editable = editableListing.projects
                 let settingsByID = Dictionary(uniqueKeysWithValues: editable.map { ($0.id, $0) })
                 var result = manifests.map { manifest -> LibraryRow in
                     var statuses: [LibraryStatus] = []
@@ -242,15 +253,20 @@ struct ProjectListView: View {
                     let date = (try? documents.directory(settings.id)
                         .appendingPathComponent("settings.json").resourceValues(forKeys: [.contentModificationDateKey])
                         .contentModificationDate) ?? .now
-                    let status = AppError(code: "E_NOT_PUBLISHED", message: "Размер ещё не опубликован.",
-                                          hint: "Откройте проект и сохраните его.")
+                    let status = published.diagnostics[settings.id].map { AppError.convert($0) } ??
+                        AppError(code: "E_NOT_PUBLISHED", message: "Размер ещё не опубликован.",
+                                 hint: "Откройте проект и сохраните его.")
                     result.append(LibraryRow(id: settings.id, name: settings.name,
                         date: date, slotCount: plan?.slotCount, fps: plan?.fps,
                         duration: plan?.outputDuration, thumbnail: image,
                         statuses: WidgetSize.allCases.map { LibraryStatus(size: $0, error: status) }))
                 }
                 result.sort { $0.date > $1.date }
-                await MainActor.run { rows = result; error = nil }
+                var found = editableListing.diagnostics
+                for (id, failure) in published.diagnostics {
+                    found[id] = AppError.convert(failure)
+                }
+                await MainActor.run { rows = result; diagnostics = found; error = nil }
             } catch {
                 let value = AppError.convert(error)
                 await MainActor.run { self.error = value }

@@ -12,6 +12,11 @@ struct ProjectSnapshot {
 
 final class ProjectStore {
     private struct Pointer: Codable { let generation: UUID }
+    struct Listing {
+        let projects: [ProjectManifest]
+        let diagnostics: [UUID: ProjectReadError]
+    }
+    private static let publicationLock = NSRecursiveLock()
 
     let root: URL
     let budget: AnimationBudget
@@ -32,6 +37,8 @@ final class ProjectStore {
     }
 
     func publish(_ draft: ProjectDraft) throws {
+        Self.publicationLock.lock()
+        defer { Self.publicationLock.unlock() }
         do { try publishImpl(draft) }
         catch {
             DiagnosticsLog(root: root, maxBytes: budget.maxLogBytes).append(
@@ -88,27 +95,53 @@ final class ProjectStore {
                                        variants: variants)
         try encoded(manifest).write(to: stage.appendingPathComponent("manifest.json"), options: .atomic)
         // The pointer is the commit record. A failed publication leaves it untouched.
+        try Task.checkCancellation()
         try encoded(Pointer(generation: generation)).write(
             to: projectDir.appendingPathComponent("current.json"), options: .atomic)
         committed = true
+        do { try cleanupGenerations(in: projectDir, keeping: generation) }
+        catch {
+            DiagnosticsLog(root: root, maxBytes: budget.maxLogBytes).append(
+                event: "generation_cleanup_error", projectID: draft.id,
+                detail: String(describing: error))
+        }
         DiagnosticsLog(root: root, maxBytes: budget.maxLogBytes).append(
             event: "published", projectID: draft.id, detail: generation.uuidString)
     }
 
     func delete(_ id: UUID) throws {
+        Self.publicationLock.lock()
+        defer { Self.publicationLock.unlock() }
         let dir = directory(for: id)
-        try fm.createDirectory(at: dir, withIntermediateDirectories: true)
-        try Data("{}".utf8).write(to: dir.appendingPathComponent("deleted.json"), options: .atomic)
+        if fm.fileExists(atPath: dir.path) { try fm.removeItem(at: dir) }
         DiagnosticsLog(root: root, maxBytes: budget.maxLogBytes).append(
             event: "deleted", projectID: id, detail: "")
     }
 
-    func list() -> [ProjectManifest] {
-        guard let urls = try? fm.contentsOfDirectory(at: root, includingPropertiesForKeys: nil) else { return [] }
-        return urls.compactMap { url -> ProjectManifest? in
-            guard let id = UUID(uuidString: url.lastPathComponent) else { return nil }
-            return try? readManifest(id)
-        }.sorted { $0.createdAt > $1.createdAt }
+    func listing() throws -> Listing {
+        if !fm.fileExists(atPath: root.path) { return Listing(projects: [], diagnostics: [:]) }
+        let urls = try fm.contentsOfDirectory(at: root, includingPropertiesForKeys: nil)
+        var projects: [ProjectManifest] = []
+        var diagnostics: [UUID: ProjectReadError] = [:]
+        for url in urls {
+            guard let id = UUID(uuidString: url.lastPathComponent) else { continue }
+            do { projects.append(try readManifest(id)) }
+            catch let failure as ProjectReadError { diagnostics[id] = failure }
+            catch { diagnostics[id] = .manifestInvalid(error.localizedDescription) }
+        }
+        return Listing(projects: projects.sorted { $0.createdAt > $1.createdAt },
+                       diagnostics: diagnostics)
+    }
+
+    private func cleanupGenerations(in projectDir: URL, keeping generation: UUID) throws {
+        let current = try JSONDecoder().decode(Pointer.self,
+            from: Data(contentsOf: projectDir.appendingPathComponent("current.json"))).generation
+        guard current == generation else { return }
+        let folders = try fm.contentsOfDirectory(at: projectDir, includingPropertiesForKeys: nil)
+        for folder in folders {
+            guard let old = UUID(uuidString: folder.lastPathComponent), old != current else { continue }
+            try fm.removeItem(at: folder)
+        }
     }
 
     func read(_ id: UUID, size: WidgetSize) throws -> ProjectSnapshot {
@@ -123,11 +156,19 @@ final class ProjectStore {
         for record in variant.frames {
             let url = generationDir.appendingPathComponent(record.file)
             guard fm.fileExists(atPath: url.path) else {
+                if !fm.fileExists(atPath: directory(for: id).path) {
+                    throw ProjectReadError.projectDeleted
+                }
                 throw ProjectReadError.frameFileMissing(record.file)
             }
             let data: Data
             do { data = try Data(contentsOf: url) }
-            catch { throw ProjectReadError.frameInvalid("unreadable \(record.file)") }
+            catch {
+                if !fm.fileExists(atPath: directory(for: id).path) {
+                    throw ProjectReadError.projectDeleted
+                }
+                throw ProjectReadError.frameInvalid("unreadable \(record.file)")
+            }
             guard data.count == record.byteCount, Self.digest(data) == record.sha256 else {
                 throw ProjectReadError.frameInvalid("size or hash mismatch: \(record.file)")
             }
@@ -167,7 +208,7 @@ final class ProjectStore {
     }
 
     private func validate(_ variant: WidgetVariant, size: WidgetSize) throws {
-        guard variant.width > 0, variant.height > 0,
+        guard FrameProcessor.validDimensions(variant.width, variant.height),
               let maxPixels = budget.maxPixels[size],
               variant.width <= maxPixels, variant.height <= maxPixels,
               variant.width <= maxPixels / variant.height else {

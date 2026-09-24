@@ -117,6 +117,18 @@ enum AnimationPlanner {
         }
     }
 
+    static func reliablePlan(from plans: [Plan], sourceFrameCount: Int) -> Plan? {
+        let candidates = plans.filter { sourceFrameCount < 2 || $0.uniqueSourceIndices.count >= 2 }
+        return candidates.min { a, b in
+            if a.phaseCount != b.phaseCount { return a.phaseCount < b.phaseCount }
+            if a.uniqueSourceIndices.count != b.uniqueSourceIndices.count {
+                return a.uniqueSourceIndices.count < b.uniqueSourceIndices.count
+            }
+            if a.outputDuration != b.outputDuration { return a.outputDuration < b.outputDuration }
+            return a.fps < b.fps
+        }
+    }
+
     /// Sample the center of each equal time interval, respecting source delays.
     private static func sample(durations: [Double], count: Int) -> [Int] {
         let total = durations.reduce(0, +)

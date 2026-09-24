@@ -4,6 +4,10 @@ import UniformTypeIdentifiers
 
 /// Editable sources live in Application Support, outside the widget App Group.
 final class ProjectDocuments {
+    struct Listing {
+        let projects: [EditorSettings]
+        let diagnostics: [UUID: AppError]
+    }
     let root: URL
     private let fm = FileManager.default
 
@@ -43,9 +47,18 @@ final class ProjectDocuments {
         if fm.fileExists(atPath: url.path) { try fm.removeItem(at: url) }
     }
 
-    func list() -> [EditorSettings] {
-        guard let folders = try? fm.contentsOfDirectory(at: root, includingPropertiesForKeys: nil) else { return [] }
-        return folders.compactMap { UUID(uuidString: $0.lastPathComponent).flatMap { try? load($0) } }
+    func list() throws -> Listing {
+        let folders = try fm.contentsOfDirectory(at: root, includingPropertiesForKeys: nil)
+        var projects: [EditorSettings] = []
+        var diagnostics: [UUID: AppError] = [:]
+        for folder in folders {
+            guard let id = UUID(uuidString: folder.lastPathComponent) else { continue }
+            do { projects.append(try load(id)) }
+            catch { diagnostics[id] = AppError(code: "E_SETTINGS_INVALID",
+                message: "Настройки проекта \(id) не читаются: \(error.localizedDescription)",
+                hint: "Восстановите проект из резервной копии или удалите его.") }
+        }
+        return Listing(projects: projects, diagnostics: diagnostics)
     }
 
     func duplicate(_ settings: EditorSettings) throws -> EditorSettings {
@@ -61,6 +74,7 @@ final class ProjectDocuments {
 
     func importBytes(_ data: Data, name: String) throws -> EditorSettings {
         try Task.checkCancellation()
+        guard data.count <= GIFImporter.maxSourceBytes else { throw GIFImporter.ImportError.sourceTooLarge }
         let type = try Self.validateType(data)
         let id = UUID()
         let sourceName = "source.\(type.preferredFilenameExtension ?? "gif")"
@@ -99,17 +113,20 @@ final class ProjectDocuments {
             let input = try FileHandle(forReadingFrom: url)
             let output = try FileHandle(forWritingTo: temporary)
             defer { try? input.close(); try? output.close() }
-            let total = (try? url.resourceValues(forKeys: [.fileSizeKey]).fileSize) ?? 0
+            let total = try url.resourceValues(forKeys: [.fileSizeKey]).fileSize ?? 0
+            guard total <= GIFImporter.maxSourceBytes else { throw GIFImporter.ImportError.sourceTooLarge }
             var written = 0
             while true {
                 try Task.checkCancellation()
                 guard let chunk = try input.read(upToCount: 1_048_576), !chunk.isEmpty else { break }
+                guard written <= GIFImporter.maxSourceBytes - chunk.count else {
+                    throw GIFImporter.ImportError.sourceTooLarge
+                }
                 try output.write(contentsOf: chunk)
                 written += chunk.count
                 if total > 0 { progress(min(1, Double(written) / Double(total))) }
             }
-            let data = try Data(contentsOf: temporary, options: .mappedIfSafe)
-            let type = try Self.validateType(data)
+            let type = try Self.validateType(temporary)
             let sourceName = "source.\(type.preferredFilenameExtension ?? "gif")"
             let source = folder.appendingPathComponent(sourceName)
             try fm.moveItem(at: temporary, to: source)
@@ -145,6 +162,25 @@ final class ProjectDocuments {
         return type
     }
 
+    private static func validateType(_ url: URL) throws -> UTType {
+        guard let source = CGImageSourceCreateWithURL(url as CFURL,
+                [kCGImageSourceShouldCache as String: false] as CFDictionary),
+              let identifier = CGImageSourceGetType(source),
+              let type = UTType(identifier as String) else {
+            throw AppError(code: "E_UNSUPPORTED_TYPE", message: "Файл не является изображением.",
+                           hint: "Выберите GIF, APNG или WebP.")
+        }
+        guard type.conforms(to: .gif) || type.conforms(to: .png) || type.conforms(to: .webP) else {
+            throw AppError(code: "E_UNSUPPORTED_TYPE", message: "Формат не поддерживается.",
+                           hint: "Выберите GIF, APNG или WebP.")
+        }
+        guard CGImageSourceGetCount(source) > 1 else {
+            throw AppError(code: "E_NOT_ANIMATED", message: "В файле один кадр.",
+                           hint: "Выберите анимированный файл.")
+        }
+        return type
+    }
+
     private func initialSettings(id: UUID, name: String, sourceName: String,
                                  importer: GIFImporter) throws -> EditorSettings {
         var settings = EditorSettings(id: id, name: name,
@@ -152,7 +188,7 @@ final class ProjectDocuments {
         let plans = try settings.availablePlans(importer: importer)
         guard let plan = AnimationPlanner.defaultPlan(
             from: plans.filter { $0.uniqueSourceIndices.count >= 2 },
-            durations: settings.selectedFrameIndices(in: importer).map { importer.frames[$0].duration },
+            durations: settings.selectedFrameDurations(in: importer),
             speed: 1, mode: .forward) ?? plans.first else {
             throw AppError(code: "E_PLAN_INVALID", message: "Для исходника нет допустимого плана.",
                            hint: "Выберите более короткий фрагмент или уменьшите разрешение.")

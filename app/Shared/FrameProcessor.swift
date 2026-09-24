@@ -29,11 +29,20 @@ enum FrameProcessor {
         case contextFailed
     }
 
+    static func validDimensions(_ width: Int, _ height: Int) -> Bool {
+        (1...2048).contains(width) && (1...2048).contains(height) &&
+            width <= 1_000_000 / height
+    }
+
+    static func effectiveStyle(_ image: CGImage, requested: Style) -> Style {
+        if requested == .automatic { return looksLikePixelArt(image) ? .pixelArt : .photo }
+        return requested
+    }
+
     static func process(_ image: CGImage, options: Options) throws -> CGImage {
         let outputWidth = options.width ?? options.size
         let outputHeight = options.height ?? options.size
-        guard (1...2048).contains(outputWidth), (1...2048).contains(outputHeight),
-              outputWidth <= 1_000_000 / outputHeight,
+        guard validDimensions(outputWidth, outputHeight),
               options.offsetX.isFinite, options.offsetY.isFinite,
               options.zoom.isFinite, (0.1...8).contains(options.zoom),
               [0, 90, 180, 270].contains(options.rotation),
@@ -42,8 +51,7 @@ enum FrameProcessor {
               options.paletteColors.map({ (16...64).contains($0) }) ?? true else {
             throw ProcessingError.invalidOptions
         }
-        let pixelArt = options.style == .pixelArt ||
-            (options.style == .automatic && looksLikePixelArt(image))
+        let pixelArt = effectiveStyle(image, requested: options.style) == .pixelArt
         guard let context = makeContext(width: outputWidth, height: outputHeight) else {
             throw ProcessingError.contextFailed
         }

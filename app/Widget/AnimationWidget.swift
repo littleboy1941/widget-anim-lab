@@ -22,13 +22,13 @@ struct AnimationEntity: AppEntity {
 struct AnimationQuery: EntityQuery {
     func entities(for identifiers: [UUID]) async throws -> [AnimationEntity] {
         let store = try ProjectStore(groupIdentifier: WidgetEnvironment.groupID)
-        return store.list().filter { identifiers.contains($0.id) }
+        return try store.listing().projects.filter { identifiers.contains($0.id) }
             .map { AnimationEntity(id: $0.id, name: $0.name) }
     }
 
     func suggestedEntities() async throws -> [AnimationEntity] {
         let store = try ProjectStore(groupIdentifier: WidgetEnvironment.groupID)
-        return store.list().map { AnimationEntity(id: $0.id, name: $0.name) }
+        return try store.listing().projects.map { AnimationEntity(id: $0.id, name: $0.name) }
     }
 }
 
@@ -68,12 +68,6 @@ struct AnimationProvider: AppIntentTimelineProvider {
         let date = Date()
         // Анимация не выбрана — показываем последнюю сохранённую (удобно сразу после
         // добавления виджета; на этом же держится проверка в CI).
-        let latest = (try? ProjectStore(groupIdentifier: WidgetEnvironment.groupID))?
-            .list().max { $0.createdAt < $1.createdAt }?.id
-        guard let id = configuration.animation?.id ?? latest else {
-            return AnimationEntry(date: date, configuration: configuration, snapshot: nil,
-                                  failure: .manifestInvalid("no animations yet: import one in the app"))
-        }
         let size: WidgetSize
         switch family {
         case .systemSmall: size = .small
@@ -83,6 +77,17 @@ struct AnimationProvider: AppIntentTimelineProvider {
         }
         do {
             let store = try ProjectStore(groupIdentifier: WidgetEnvironment.groupID)
+            let latest: UUID?
+            var listingFailure: ProjectReadError?
+            if configuration.animation == nil {
+                let listing = try store.listing()
+                latest = listing.projects.max { $0.createdAt < $1.createdAt }?.id
+                listingFailure = listing.diagnostics.values.first
+            } else { latest = nil }
+            guard let id = configuration.animation?.id ?? latest else {
+                return AnimationEntry(date: date, configuration: configuration, snapshot: nil,
+                    failure: listingFailure ?? .manifestInvalid("no animations yet: import one in the app"))
+            }
             let snapshot = try store.read(id, size: size)
             return AnimationEntry(date: date, configuration: configuration,
                                   snapshot: snapshot, failure: nil)
@@ -91,7 +96,7 @@ struct AnimationProvider: AppIntentTimelineProvider {
                 .manifestInvalid("read failed: \(error.localizedDescription)")
             if let store = try? ProjectStore(groupIdentifier: WidgetEnvironment.groupID) {
                 DiagnosticsLog(root: store.root, maxBytes: store.budget.maxLogBytes).append(
-                    event: "widget_read_error", projectID: id,
+                    event: "widget_read_error", projectID: configuration.animation?.id,
                     detail: "\(failure.code): \(failure.message)")
             }
             return AnimationEntry(date: date, configuration: configuration,

@@ -101,10 +101,26 @@ struct EditorSettings: Codable, Equatable {
         }.map(\.index)
     }
 
+    func selectedFrameDurations(in importer: GIFImporter) -> [Double] {
+        selectedFrameIndices(in: importer).map { index in
+            let frame = importer.frames[index]
+            return Self.intersectionDuration(frameStart: frame.startTime,
+                frameDuration: frame.duration, fragmentStart: fragmentStart,
+                fragmentEnd: fragmentEnd)
+        }
+    }
+
+    static func intersectionDuration(frameStart: Double, frameDuration: Double,
+                                     fragmentStart: Double, fragmentEnd: Double) -> Double {
+        let start = max(frameStart, fragmentStart)
+        let end = min(frameStart + frameDuration, fragmentEnd)
+        return max(0, end - start)
+    }
+
     func availablePlans(importer: GIFImporter,
                         budget: AnimationBudget = .standard) throws -> [AnimationPlanner.Plan] {
         let pixels = WidgetSize.allCases.compactMap { size -> Int? in
-            guard let item = geometry[size], item.width > 0, item.height > 0,
+            guard let item = geometry[size], FrameProcessor.validDimensions(item.width, item.height),
                   let limit = budget.maxPixels[size], item.width <= limit / item.height else { return nil }
             return item.width * item.height
         }.min() ?? 0
@@ -115,7 +131,7 @@ struct EditorSettings: Codable, Equatable {
         }
         let selected = selectedFrameIndices(in: importer)
         guard !selected.isEmpty else { return [] }
-        let durations = selected.map { importer.frames[$0].duration }
+        let durations = selectedFrameDurations(in: importer)
         let local = try AnimationPlanner.allPlans(durations: durations, speed: speed,
             mode: loop, pixelsPerFrame: pixels, budget: budget)
         return local.map { plan in
@@ -137,14 +153,14 @@ struct EditorSettings: Codable, Equatable {
         return plan
     }
 
-    func frameOptions(for size: WidgetSize, preview: Bool = false) throws -> FrameProcessor.Options {
+    func frameOptions(for size: WidgetSize) throws -> FrameProcessor.Options {
         guard let geometry = geometry[size] else {
             throw AppError(code: "E_SIZE_MISSING", message: "Нет настроек размера \(size.rawValue).",
                            hint: "Задайте разрешение в «Кадрировании».")
         }
         var options = FrameProcessor.Options()
-        options.width = preview ? max(1, geometry.width / 2) : geometry.width
-        options.height = preview ? max(1, geometry.height / 2) : geometry.height
+        options.width = geometry.width
+        options.height = geometry.height
         options.layout = geometry.layout
         options.offsetX = geometry.offsetX
         options.offsetY = geometry.offsetY
@@ -195,6 +211,12 @@ struct AppError: Error, Identifiable, Equatable {
             case .decodeFailed(let index):
                 return AppError(code: "E_READ_FAILED", message: "Не прочитан кадр \(index).",
                                 hint: "Попробуйте другой исходник.")
+            case .sourcePixels:
+                return AppError(code: "E_SOURCE_PIXELS", message: "Холст исходника превышает 80 Мпикс.",
+                                hint: "Выберите анимацию меньшего размера.")
+            case .sourceTooLarge:
+                return AppError(code: "E_SOURCE_TOO_LARGE", message: "Файл исходника превышает 150 МБ.",
+                                hint: "Выберите файл меньшего размера.")
             default: break
             }
         }

@@ -18,6 +18,18 @@ final class GIFImporter {
         case emptyAnimation
         case invalidSize
         case decodeFailed(Int)
+        case sourcePixels
+        case sourceTooLarge
+    }
+
+    static let maxSourcePixels = 80_000_000
+    static let maxSourceBytes = 150 * 1_000_000
+
+    static func validateSource(width: Int, height: Int, bytes: Int) throws {
+        guard bytes >= 0, bytes <= maxSourceBytes else { throw ImportError.sourceTooLarge }
+        guard width > 0, height > 0, width <= maxSourcePixels / height else {
+            throw ImportError.sourcePixels
+        }
     }
 
     let frames: [FrameInfo]
@@ -31,6 +43,8 @@ final class GIFImporter {
     private let source: CGImageSource
 
     init(url: URL, maximumSourceFrames: Int = 10_000) throws {
+        let sourceBytes = try url.resourceValues(forKeys: [.fileSizeKey]).fileSize ?? 0
+        guard sourceBytes <= Self.maxSourceBytes else { throw ImportError.sourceTooLarge }
         guard let source = CGImageSourceCreateWithURL(
             url as CFURL,
             [kCGImageSourceShouldCache as String: false] as CFDictionary
@@ -48,9 +62,19 @@ final class GIFImporter {
         self.source = source
         self.format = format
         let properties = CGImageSourceCopyPropertiesAtIndex(source, 0, nil) as? NSDictionary
-        canvasWidth = (properties?.object(forKey: kCGImagePropertyPixelWidth) as? NSNumber)?.intValue ?? 0
-        canvasHeight = (properties?.object(forKey: kCGImagePropertyPixelHeight) as? NSNumber)?.intValue ?? 0
-        fileBytes = (try? url.resourceValues(forKeys: [.fileSizeKey]).fileSize) ?? 0
+        let canvas = CGImageSourceCopyProperties(source, nil) as? NSDictionary
+        canvasWidth = (canvas?.object(forKey: kCGImagePropertyPixelWidth) as? NSNumber)?.intValue ??
+            (properties?.object(forKey: kCGImagePropertyPixelWidth) as? NSNumber)?.intValue ?? 0
+        canvasHeight = (canvas?.object(forKey: kCGImagePropertyPixelHeight) as? NSNumber)?.intValue ??
+            (properties?.object(forKey: kCGImagePropertyPixelHeight) as? NSNumber)?.intValue ?? 0
+        fileBytes = sourceBytes
+        try Self.validateSource(width: canvasWidth, height: canvasHeight, bytes: fileBytes)
+        for index in 0..<count {
+            let frameProperties = CGImageSourceCopyPropertiesAtIndex(source, index, nil) as? NSDictionary
+            let width = (frameProperties?.object(forKey: kCGImagePropertyPixelWidth) as? NSNumber)?.intValue ?? canvasWidth
+            let height = (frameProperties?.object(forKey: kCGImagePropertyPixelHeight) as? NSNumber)?.intValue ?? canvasHeight
+            try Self.validateSource(width: width, height: height, bytes: fileBytes)
+        }
         let first = CGImageSourceCreateImageAtIndex(source, 0,
             [kCGImageSourceShouldCache as String: false] as CFDictionary)
         hasTransparency = first.map { [.first, .last, .premultipliedFirst, .premultipliedLast, .alphaOnly]

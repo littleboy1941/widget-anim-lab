@@ -16,6 +16,8 @@ final class HomeWidgetUITests: XCTestCase {
         // импорт тестовой гифки и публикация в App Group
         let importDone = app.staticTexts["ci-import-done"]
         XCTAssertTrue(importDone.waitForExistence(timeout: 60), "импорт тестовой гифки не завершился")
+        XCTAssertEqual(app.descendants(matching: .any)
+            .matching(identifier: "AppErrorView").count, 0, "в приложении показана ошибка")
         sleep(2)
         XCUIDevice.shared.press(.home)
         sleep(2)

@@ -1,7 +1,26 @@
 import SwiftUI
 import PhotosUI
+import CoreTransferable
 import UniformTypeIdentifiers
 import UIKit
+
+private struct PhotoSourceFile: Transferable {
+    let url: URL
+
+    static var transferRepresentation: some TransferRepresentation {
+        FileRepresentation(importedContentType: .image) { received in
+            let source = received.file
+            let bytes = try source.resourceValues(forKeys: [.fileSizeKey]).fileSize ?? 0
+            guard bytes <= GIFImporter.maxSourceBytes else {
+                throw GIFImporter.ImportError.sourceTooLarge
+            }
+            let target = FileManager.default.temporaryDirectory
+                .appendingPathComponent("photo-\(UUID().uuidString)")
+            try FileManager.default.copyItem(at: source, to: target)
+            return PhotoSourceFile(url: target)
+        }
+    }
+}
 
 struct ImportView: View {
     let onImported: (UUID) -> Void
@@ -21,7 +40,7 @@ struct ImportView: View {
                         .frame(maxWidth: .infinity, minHeight: 72)
                 }
                 .buttonStyle(.borderedProminent)
-                Text("Запрашиваю данные изображения без перекодирования. Формат и число кадров проверю после загрузки.")
+                Text("Копирую оригинал во временный файл. Лимит исходника — 150 МБ и 80 Мпикс.")
                     .font(.caption).foregroundStyle(.secondary)
                 Button { showFiles = true } label: {
                     Label("Из «Файлов»", systemImage: "folder")
@@ -58,12 +77,14 @@ struct ImportView: View {
         working = true; progress = 0; error = nil
         worker = Task.detached(priority: .userInitiated) {
             do {
-                guard let data = try await item.loadTransferable(type: Data.self) else {
+                guard let source = try await item.loadTransferable(type: PhotoSourceFile.self) else {
                     throw AppError(code: "E_READ_FAILED", message: "«Фото» не вернуло исходные данные.",
                                    hint: "Попробуйте экспортировать GIF в «Файлы».")
                 }
+                defer { try? FileManager.default.removeItem(at: source.url) }
                 try Task.checkCancellation()
-                let settings = try ProjectDocuments().importBytes(data, name: "Анимация из Фото")
+                let settings = try ProjectDocuments().importFile(source.url, name: "Анимация из Фото")
+                try Task.checkCancellation()
                 await MainActor.run { working = false; onImported(settings.id) }
             } catch {
                 await MainActor.run { report(error) }
@@ -90,10 +111,11 @@ struct ImportView: View {
     private func report(_ failure: Error) {
         working = false
         if failure is CancellationError { return }
-        error = AppError.convert(failure)
+        let value = AppError.convert(failure)
+        self.error = value
         if let documents = try? ProjectDocuments() {
             DiagnosticsLog(root: documents.root).append(event: "import_error", projectID: nil,
-                                                  detail: "\(error!.code): \(error!.message)")
+                                                  detail: "\(value.code): \(value.message)")
         }
     }
 }
