@@ -5,7 +5,7 @@ name: Font probe
 on:
   push:
     branches: [main]
-    paths-ignore: ['.gitignore', 'app/**', '.github/workflows/app.yml', 'gif_import/**', '.github/workflows/gif-import.yml', '.github/workflows/sim-check.yml', '.github/workflows/app-home.yml']
+    paths-ignore: ['.gitignore', 'app/**', '.github/workflows/app.yml', 'gif_import/**', '.github/workflows/gif-import.yml', '.github/workflows/sim-check.yml', '.github/workflows/app-home.yml', '.github/workflows/app-flow.yml']
   workflow_dispatch:
 
 jobs:
