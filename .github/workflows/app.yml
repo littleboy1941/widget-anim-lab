@@ -86,10 +86,10 @@ jobs:
           import json, sys
           runtimes = [r for r in json.load(sys.stdin)["runtimes"]
                       if r["name"].startswith("iOS") and r.get("isAvailable")]
+          # 26.5 — где есть (образ macos-26); в образе xcode-27 — самый новый доступный
           preferred = [r for r in runtimes if r["version"] == "26.5"]
-          if not preferred:
-              raise SystemExit("iOS 26.5 simulator runtime is required")
-          runtime = preferred[-1]
+          runtimes.sort(key=lambda r: [int(p) for p in r["version"].split(".")])
+          runtime = (preferred or runtimes)[-1]
           phones = [d for d in runtime.get("supportedDeviceTypes", [])
                     if d["name"].startswith("iPhone") and "Pro" in d["name"]]
           if not phones:
