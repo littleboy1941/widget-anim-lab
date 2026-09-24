@@ -29,6 +29,10 @@ targets:
       # кадры для проверки длины анимации, генерирует CI (make_frames.py)
       - path: LenFrames
         optional: true
+      - path: SmallFrames
+        optional: true
+      - path: SlowFrames
+        optional: true
       # кадры для замера памяти (CI, make_frames.py)
       - path: MemFrames
         optional: true
@@ -77,6 +81,10 @@ targets:
       - path: Frames
       # кадры для проверки длины анимации, генерирует CI (make_frames.py)
       - path: LenFrames
+        optional: true
+      - path: SmallFrames
+        optional: true
+      - path: SlowFrames
         optional: true
       # кадры для замера памяти (CI, make_frames.py)
       - path: MemFrames

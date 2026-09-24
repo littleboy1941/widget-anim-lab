@@ -91,9 +91,9 @@ struct ImageFramesAnimation: View {
     var overlap = ProbeConfig.overlap
     /// Цикл масок, с: делит 60, cycle*fps кратно числу кадров.
     var cycle = ProbeConfig.imageCycle
+    var fps = ProbeConfig.fps
 
     var body: some View {
-        let fps = ProbeConfig.fps
         let phases = cycle * fps
         ZStack {
             ForEach(0..<frames.count, id: \.self) { f in
@@ -124,8 +124,104 @@ struct ImageFramesAnimation: View {
         (0..<count).compactMap { UIImage(named: "len_\($0).png") }
     }
 
+    static func experimentFrames(_ count: Int, prefix: String) -> [UIImage] {
+        (0..<count).compactMap { UIImage(named: "\(prefix)_\($0).png") }
+    }
+
     /// Кадры для замера памяти: 40 штук side×side (make_frames.py, MemFrames).
     static func memoryFrames(side: Int) -> [UIImage] {
         (0..<40).compactMap { UIImage(named: "mem\(side)_\($0).png") }
+    }
+}
+
+/// Four independent 40-frame stacks. Each stack retains the global phase number:
+/// its 40 masks still use the same 20-second clock as the unsplit 160-frame control.
+struct SplitImageFramesAnimation: View {
+    let ref: Date
+    let size: CGFloat
+    let frames: [UIImage]
+
+    var body: some View {
+        ZStack {
+            ForEach(0..<4, id: \.self) { stack in
+                ZStack {
+                    ForEach(0..<40, id: \.self) { local in
+                        let i = stack * 40 + local
+                        if i < frames.count {
+                            Image(uiImage: frames[i])
+                                .resizable()
+                                .interpolation(.none)
+                                .frame(width: size, height: size)
+                                .mask {
+                                    PhaseWindow(ref: ref, phase: i, fps: 8, cycle: 20,
+                                                size: size, overlap: 0.02)
+                                }
+                        }
+                    }
+                }
+                .frame(width: size, height: size)
+            }
+        }
+        .frame(width: size, height: size)
+        .clipped()
+    }
+}
+
+/// One fractional-second gate shared by all frames with index % fps == slot.
+/// WABlink2 fires for one second every two seconds. The two PhaseWindows cover
+/// slot j in both seconds of that cycle, for 4 timers per slot.
+struct FractionWindow: View {
+    let ref: Date
+    let slot: Int
+    let fps: Int
+    let size: CGFloat
+
+    var body: some View {
+        ZStack {
+            PhaseWindow(ref: ref, phase: slot, fps: fps, cycle: 2,
+                        size: size, overlap: 0.02)
+            PhaseWindow(ref: ref, phase: slot + fps, fps: fps, cycle: 2,
+                        size: size, overlap: 0.02)
+        }
+        .frame(width: size, height: size)
+    }
+}
+
+/// One WABlink<C> timer per frame selects its whole second; a shared gate on
+/// the outer ZStack selects the fractional slot. For 80/160 frames at 8 fps:
+/// 80/160 second timers + 8 * (2 windows * 2 timers) = 112/192 timers.
+/// Fraction windows overlap by 0.02 s within a second. A one-timer second
+/// gate is exactly 1 s wide, so at integer-second boundaries (also the
+/// transition between slots 7 and 0) adjacent gates merely touch. Their
+/// independent timer updates can still expose a brief blank there.
+struct GroupedImageFramesAnimation: View {
+    let ref: Date
+    let size: CGFloat
+    let frames: [UIImage]
+    let cycle: Int
+    private var fps: Int { 8 }
+
+    var body: some View {
+        ZStack {
+            ForEach(0..<fps, id: \.self) { slot in
+                ZStack {
+                    ForEach(0..<(frames.count / fps), id: \.self) { second in
+                        let i = second * fps + slot
+                        Image(uiImage: frames[i])
+                            .resizable()
+                            .interpolation(.none)
+                            .frame(width: size, height: size)
+                            .mask {
+                                TimerGlyph(date: ref + Double(second),
+                                           font: "WABlink\(cycle)-Regular", size: size)
+                            }
+                    }
+                }
+                .frame(width: size, height: size)
+                .mask { FractionWindow(ref: ref, slot: slot, fps: fps, size: size) }
+            }
+        }
+        .frame(width: size, height: size)
+        .clipped()
     }
 }

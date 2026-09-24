@@ -16,12 +16,13 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        # замер памяти расширения: 40 кадров side×side (14…200 МБ декодированных)
-        mode: [mem300, mem510, mem746, mem1000, mem1118]
+        # Размер, длина цикла, число слоёв в стопке и общие маски доли секунды.
+        mode: [len160s, len80c20, split160, grp80, grp160]
     runs-on: macos-26
     env:
       SKIP_APP: "1"
       NO_ANALYZE: "1"
+      PROBE_SWIFT_FLAGS: LENGTH_EXPERIMENTS
     timeout-minutes: 60
     steps:
       - uses: actions/checkout@v4
@@ -35,15 +36,18 @@ jobs:
           echo 'enum Variant { static let mode = "${{ matrix.mode }}" }' > Shared/Variant.swift
           cat Shared/Variant.swift
           python3 -m pip install --quiet --break-system-packages pillow
+          # All three frame sets are bundled in every job, so the grp80 IPA can
+          # expose all five experiments while simulator jobs differ only by mode.
           python3 make_frames.py --count 160 --size 150 --out LenFrames
           for f in LenFrames/frame_*.png; do mv "$f" "LenFrames/len_${f#LenFrames/frame_}"; done
-          ls LenFrames | head -3; ls LenFrames | wc -l
-          mkdir -p MemFrames
-          for side in 300 510 746 1000 1118; do
-            python3 make_frames.py --count 40 --size $side --out mf_tmp
-            for f in mf_tmp/frame_*.png; do mv "$f" "MemFrames/mem${side}_${f#mf_tmp/frame_}"; done
+          python3 make_frames.py --count 160 --size 48 --out SmallFrames
+          for f in SmallFrames/frame_*.png; do mv "$f" "SmallFrames/lens_${f#SmallFrames/frame_}"; done
+          python3 make_frames.py --count 80 --size 150 --out SlowFrames
+          for f in SlowFrames/frame_*.png; do mv "$f" "SlowFrames/slow_${f#SlowFrames/frame_}"; done
+          for dir in LenFrames SmallFrames SlowFrames; do
+            echo "$dir: $(find "$dir" -name '*.png' | wc -l) frames"
           done
-          ls MemFrames | wc -l; du -sh MemFrames
+          ls Fonts/WABlink{2,10,20}.ttf
 
       - name: Install XcodeGen
         run: |
@@ -61,7 +65,8 @@ jobs:
           cd probe
           xcodebuild -project FontProbe.xcodeproj -scheme FontProbe -configuration Release \
             -sdk iphonesimulator -destination 'generic/platform=iOS Simulator' \
-            -derivedDataPath build_sim CODE_SIGNING_ALLOWED=NO build > build_sim.log 2>&1 \
+            -derivedDataPath build_sim CODE_SIGNING_ALLOWED=NO \
+            SWIFT_ACTIVE_COMPILATION_CONDITIONS=LENGTH_EXPERIMENTS build > build_sim.log 2>&1 \
             || { grep -E "error:" build_sim.log | head -40; tail -40 build_sim.log; exit 1; }
           mkdir -p out
           cp -R build_sim/Build/Products/Release-iphonesimulator/FontProbe.app out/
@@ -69,12 +74,13 @@ jobs:
           xcrun vtool -show-build out/FontProbe.app/FontProbe | grep -E "platform|sdk"
 
       - name: Build IPA for device
-        if: matrix.mode == 'mem300'
+        if: matrix.mode == 'grp80'
         run: |
           cd probe
           xcodebuild -project FontProbe.xcodeproj -scheme FontProbe -configuration Release \
             -sdk iphoneos -destination 'generic/platform=iOS' \
             -derivedDataPath build_dev CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" \
+            SWIFT_ACTIVE_COMPILATION_CONDITIONS=LENGTH_EXPERIMENTS \
             build > build_dev.log 2>&1 \
             || { grep -E "error:" build_dev.log | head -40; tail -40 build_dev.log; exit 1; }
           mkdir -p Payload

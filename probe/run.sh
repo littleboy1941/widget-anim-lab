@@ -70,13 +70,15 @@ fi
 echo "== UI-тест: ставим виджет на домашний экран"
 xcodebuild test -project FontProbe.xcodeproj -scheme FontProbe -destination "id=$DEV" \
   -derivedDataPath build_test CODE_SIGN_IDENTITY=- CODE_SIGNING_ALLOWED=YES CODE_SIGNING_REQUIRED=NO \
+  SWIFT_ACTIVE_COMPILATION_CONDITIONS="${PROBE_SWIFT_FLAGS:-}" \
   > "$OUT/uitest.log" 2>&1
 echo "UI-тест: код $?" | tee -a "$OUT/result.txt"
 grep -E "Test Case|error|failed|passed" "$OUT/uitest.log" | tail -20
 xcrun simctl terminate "$DEV" com.widgetlab.fontprobe 2>/dev/null || true
 # даём системе время заменить заглушку живым виджетом
 sleep 60
-record "home_widget" 20
+# Длинный вариант делает полный оборот за 20 с; запас покрывает задержку записи.
+record "home_widget" 25
 # падения расширения и его сообщения — если виджета нет в галерее или он пустой
 mkdir -p "$OUT/crash"
 find ~/Library/Logs/DiagnosticReports -name "*FontProbe*" -exec cp {} "$OUT/crash/" \; 2>/dev/null

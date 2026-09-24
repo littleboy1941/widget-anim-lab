@@ -65,11 +65,21 @@ struct ProbeWidgetBundle: WidgetBundle {
     var body: some Widget {
         // Первым — диагностика: UI-тест в симуляторе добавляет первый виджет из галереи.
         DiagProbeWidget()
+        #if LENGTH_EXPERIMENTS
+        // CI length matrix and the grp80 IPA: 5 experiments + 3 existing = 8.
+        Len160SmallWidget()
+        Len80Cycle20Widget()
+        Split160Widget()
+        Group80Widget()
+        Group160Widget()
+        #else
+        // Keep the original memory gallery in ordinary builds.
         Mem300Widget()
         Mem510Widget()
         Mem746Widget()
         Mem1000Widget()
         Mem1118Widget()
+        #endif
         ImagesProbeWidget()
         FontsProbeWidget()
     }
