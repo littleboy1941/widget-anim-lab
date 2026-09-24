@@ -1,0 +1,94 @@
+name: GIF import
+
+on:
+  push:
+    paths:
+      - 'gif_import/**'
+      - '.github/workflows/gif-import.yml'
+  workflow_dispatch:
+
+jobs:
+  build-and-test:
+    runs-on: macos-26
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Select Xcode
+        run: sudo xcode-select -s /Applications/Xcode_26.6.app/Contents/Developer
+
+      - name: Generate animation fixtures
+        run: |
+          python3 -m pip install --quiet --break-system-packages pillow
+          python3 gif_import/make_fixtures.py
+
+      - name: Install XcodeGen
+        run: |
+          curl -sL -o xcodegen.zip https://github.com/yonaskolb/XcodeGen/releases/latest/download/xcodegen.zip
+          unzip -q xcodegen.zip -d xcodegen
+          echo "$PWD/xcodegen/xcodegen/bin" >> "$GITHUB_PATH"
+
+      - name: Generate project
+        run: |
+          xcodebuild -version
+          cd gif_import
+          xcodegen generate
+
+      - name: Build app and widget for simulator
+        run: |
+          cd gif_import
+          mkdir -p ci-out
+          xcodebuild -project GifImport.xcodeproj -scheme GifImport -configuration Debug \
+            -sdk iphonesimulator -destination 'generic/platform=iOS Simulator' \
+            -derivedDataPath ci-out/build CODE_SIGNING_ALLOWED=NO build \
+            > ci-out/build.log 2>&1 || {
+              grep -E 'error:' ci-out/build.log | head -60 || true
+              tail -60 ci-out/build.log
+              exit 1
+            }
+          tail -15 ci-out/build.log
+
+      - name: Ensure iOS simulator runtime
+        run: xcrun simctl list runtimes | grep -q 'iOS' || xcodebuild -downloadPlatform iOS
+
+      - name: Run unit tests on iPhone simulator
+        run: |
+          cd gif_import
+          read -r runtime device_type < <(xcrun simctl list runtimes -j | python3 -c '
+          import json, sys
+          runtimes = [r for r in json.load(sys.stdin)["runtimes"]
+                      if r["name"].startswith("iOS") and r.get("isAvailable")]
+          if not runtimes:
+              raise SystemExit("No available iOS simulator runtime")
+          runtimes.sort(key=lambda r: [int(p) for p in r["version"].split(".")])
+          preferred = [r for r in runtimes if r["version"] == "26.5"]
+          runtime = preferred[-1] if preferred else runtimes[-1]
+          phones = [d for d in runtime.get("supportedDeviceTypes", [])
+                    if d["name"].startswith("iPhone") and "Pro" in d["name"]]
+          if not phones:
+              raise SystemExit("No supported iPhone Pro simulator")
+          print(runtime["identifier"], phones[-1]["identifier"])
+          ')
+          echo "Simulator runtime: $runtime; device type: $device_type"
+          simulator=$(xcrun simctl create GifImport-CI "$device_type" "$runtime")
+          trap 'xcrun simctl shutdown "$simulator" 2>/dev/null || true; xcrun simctl delete "$simulator" 2>/dev/null || true' EXIT
+          xcrun simctl boot "$simulator"
+          xcrun simctl bootstatus "$simulator" -b
+          xcodebuild -project GifImport.xcodeproj -scheme GifImportTests -configuration Debug \
+            -destination "platform=iOS Simulator,id=$simulator" \
+            -derivedDataPath ci-out/test-build -resultBundlePath ci-out/test.xcresult \
+            CODE_SIGNING_ALLOWED=NO test > ci-out/test.log 2>&1 || {
+              grep -E 'error:|Test Case.*failed|failed -' ci-out/test.log | head -80 || true
+              tail -80 ci-out/test.log
+              exit 1
+            }
+          grep -E 'Test Case|Executed|TEST SUCCEEDED' ci-out/test.log | tail -40 || true
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: gif-import-build-and-test
+          path: |
+            gif_import/ci-out/build.log
+            gif_import/ci-out/test.log
+            gif_import/ci-out/test.xcresult

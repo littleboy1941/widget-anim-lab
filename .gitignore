@@ -8,3 +8,6 @@ probe/_tmp/
 probe/*.mp4
 probe/LenFrames/
 __pycache__/
+gif_import/Fixtures/
+gif_import/GifImport.xcodeproj/
+gif_import/ci-out/

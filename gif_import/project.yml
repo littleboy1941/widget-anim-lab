@@ -1,0 +1,78 @@
+name: GifImport
+options:
+  bundleIdPrefix: com.widgetlab.gifimport
+  deploymentTarget:
+    iOS: "18.0"
+settings:
+  base:
+    SWIFT_VERSION: "5.0"
+    TARGETED_DEVICE_FAMILY: "1"
+    MARKETING_VERSION: "0.1"
+    CURRENT_PROJECT_VERSION: "1"
+    CODE_SIGNING_ALLOWED: "NO"
+    CODE_SIGNING_REQUIRED: "NO"
+    CODE_SIGN_IDENTITY: ""
+    COMPRESS_PNG_FILES: "NO"
+    STRIP_PNG_TEXT: "NO"
+targets:
+  GifImport:
+    type: application
+    platform: iOS
+    sources:
+      - path: Sources
+      - path: App
+    dependencies:
+      - target: GifImportWidget
+    info:
+      path: App/Info.plist
+      properties:
+        CFBundleDisplayName: GifImport
+        UILaunchScreen: {}
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.widgetlab.gifimport
+  GifImportWidget:
+    type: app-extension
+    platform: iOS
+    sources:
+      - path: Sources/FramePlanner.swift
+      - path: Sources/FrameStore.swift
+      - path: Widget
+    info:
+      path: Widget/Info.plist
+      properties:
+        CFBundleDisplayName: GifImportWidget
+        NSExtension:
+          NSExtensionPointIdentifier: com.apple.widgetkit-extension
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.widgetlab.gifimport.widget
+  GifImportTests:
+    type: bundle.unit-test
+    platform: iOS
+    sources:
+      - path: Sources/FramePlanner.swift
+      - path: Sources/GIFImporter.swift
+      - path: Sources/FrameProcessor.swift
+      - path: FramePlannerTests.swift
+      - path: Tests/ImportTests.swift
+      - path: Fixtures
+        buildPhase: resources
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.widgetlab.gifimport.tests
+        GENERATE_INFOPLIST_FILE: "YES"
+        TEST_HOST: ""
+        BUNDLE_LOADER: ""
+schemes:
+  GifImport:
+    build:
+      targets:
+        GifImport: all
+  GifImportTests:
+    build:
+      targets:
+        GifImportTests: all
+    test:
+      targets:
+        - GifImportTests
