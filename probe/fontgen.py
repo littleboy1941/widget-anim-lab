@@ -25,12 +25,20 @@ import colorsys
 import math
 import os
 import sys
+from io import BytesIO
+from pathlib import Path
 
 from fontTools.fontBuilder import FontBuilder
 from fontTools.pens.ttGlyphPen import TTGlyphPen
 from fontTools.ttLib import newTable
 from fontTools.ttLib.tables.S_V_G_ import SVGDocument
+from fontTools.ttLib.tables.sbixGlyph import Glyph as SbixGlyph
+from fontTools.ttLib.tables.sbixStrike import Strike
 from PIL import Image, ImageDraw
+
+# --sbix keeps the existing two-digit GSUB mapping but stores each color frame
+# as a PNG glyph. iOS Text rendering is the subject of the fontA24/fontA30
+# experiment; fontA8svg is the SVG control.
 
 DIGITS = ["zero", "one", "two", "three", "four", "five", "six", "seven", "eight", "nine"]
 TEST_SIZE = 32
@@ -104,7 +112,7 @@ def square_glyph(em):
     return pen.glyph()
 
 
-def build_font(path, family, em, extra_glyphs, liga, svg_docs=None):
+def build_font(path, family, em, extra_glyphs, liga, svg_docs=None, bitmap_docs=None):
     """extra_glyphs: {имя: glyf-глиф}; liga: {(a, b): имя глифа}; svg_docs: {имя: svg}."""
     base = [".notdef", "space"] + DIGITS + ["colon"]
     order = base + list(extra_glyphs)
@@ -138,6 +146,17 @@ def build_font(path, family, em, extra_glyphs, liga, svg_docs=None):
             table.docList.append(SVGDocument(svg.replace("{gid}", str(gid)), gid, gid, False))
         table.docList.sort(key=lambda d: d.startGlyphID)
         fb.font["SVG "] = table
+    if bitmap_docs:
+        table = newTable("sbix")
+        table.version = 1
+        table.flags = 1
+        strike = Strike(ppem=bitmap_docs["ppem"], resolution=72)
+        strike.glyphs = {
+            name: SbixGlyph(glyphName=name, graphicType="png ", imageData=data)
+            for name, data in bitmap_docs["pngs"].items()
+        }
+        table.strikes = {strike.ppem: strike}
+        fb.font["sbix"] = table
     fb.save(path)
 
 
@@ -147,12 +166,19 @@ def main():
     ap.add_argument("--frames", type=int, default=12, help="число тестовых кадров")
     ap.add_argument("--out", default="Fonts")
     ap.add_argument("--prefix", default="WAFrame")
+    ap.add_argument("--sbix", action="store_true", help="embed PNG glyphs in an sbix strike instead of SVG")
+    ap.add_argument("--input-dir", type=Path, help="numbered frame_<n>.png inputs")
     ap.add_argument("--blink", type=int, nargs="*", default=[2, 3], help="циклы мигающих масок, с")
     ap.add_argument("--png-out", help="куда сохранить кадры PNG (вариант с картинками)")
     ap.add_argument("images", nargs="*")
     args = ap.parse_args()
 
-    frames = [Image.open(p).convert("RGBA") for p in args.images] or make_test_frames(args.frames)
+    if args.input_dir and args.images:
+        ap.error("use either --input-dir or positional images")
+    paths = ([args.input_dir / f"frame_{i}.png"
+              for i in range(len(list(args.input_dir.glob("frame_*.png"))))]
+             if args.input_dir else args.images)
+    frames = [Image.open(p).convert("RGBA") for p in paths] or make_test_frames(args.frames)
     L = len(frames)
     P = 2 * args.fps
     if (P * 30) % L:
@@ -161,7 +187,7 @@ def main():
     os.makedirs(args.out, exist_ok=True)
 
     for i in range(P):
-        extra, liga, svgs = {"empty": empty_glyph()}, {}, {}
+        extra, liga, svgs, bitmaps = {"empty": empty_glyph()}, {}, {}, {}
         for a in range(6):
             for b in range(10):
                 n = 10 * a + b
@@ -172,9 +198,16 @@ def main():
                 name = f"fr{f}"
                 if name not in extra:
                     extra[name] = empty_glyph()
-                    svgs[name] = frame_svg(frames[f], "{gid}", em)
+                    if args.sbix:
+                        data = BytesIO()
+                        frames[f].save(data, format="PNG", optimize=True)
+                        bitmaps[name] = data.getvalue()
+                    else:
+                        svgs[name] = frame_svg(frames[f], "{gid}", em)
                 liga[(a, b)] = name
-        build_font(os.path.join(args.out, f"{args.prefix}{i}.ttf"), f"{args.prefix}{i}", em, extra, liga, svgs)
+        build_font(os.path.join(args.out, f"{args.prefix}{i}.ttf"), f"{args.prefix}{i}", em,
+                   extra, liga, svgs,
+                   {"ppem": frames[0].width, "pngs": bitmaps} if args.sbix else None)
 
     # Мигающие шрифты-маски: квадрат, если число секунд делится на C, иначе пусто.
     # Две цифры секунд дают n mod 60, поэтому C должно делить 60.

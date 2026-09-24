@@ -63,6 +63,18 @@ struct ImagesProbeWidget: Widget {
 @main
 struct ProbeWidgetBundle: WidgetBundle {
     var body: some Widget {
+        #if RATE_EXPERIMENTS
+        RateSelectorWidget()
+        Rate12Widget()
+        Rate16Widget()
+        Rate24Widget()
+        Rate30Widget()
+        Rate24ZeroWidget()
+        Rate30ZeroWidget()
+        RateFont24Widget()
+        RateFont30Widget()
+        RateFont8SVGWidget()
+        #else
         // Первым — диагностика: UI-тест в симуляторе добавляет первый виджет из галереи.
         DiagProbeWidget()
         #if LENGTH_EXPERIMENTS
@@ -82,5 +94,6 @@ struct ProbeWidgetBundle: WidgetBundle {
         #endif
         ImagesProbeWidget()
         FontsProbeWidget()
+        #endif
     }
 }

@@ -32,7 +32,7 @@ struct TimerGlyph: View {
 
     var body: some View {
         Text(date, style: .timer)
-            .font(.custom(font, fixedSize: size))
+            .font(.custom(font, size: size))
             .frame(width: size * 9, height: size, alignment: .trailing)
             .multilineTextAlignment(.trailing)
             .offset(x: -size * 4)
@@ -76,6 +76,49 @@ struct FontFramesAnimation: View {
                         PhaseWindow(ref: ref, phase: i, fps: fps, cycle: ProbeConfig.fontCycle,
                                     size: size, overlap: overlap)
                     }
+            }
+        }
+        .frame(width: size, height: size)
+        .clipped()
+    }
+}
+
+/// Bryce's two-stack selector: P frame timers, P-1 phase masks, one
+/// whole-second mask. The topmost active frame wins, so a one-second blink
+/// suffices for every phase instead of intersecting two timers per phase.
+/// P=2*fps; the number of timers is exactly 2*P: 96/120/32 at 24/30/8 fps.
+struct BryceFontFramesAnimation: View {
+    let ref: Date
+    let size: CGFloat
+    let fps: Int
+    let prefix: String
+    var overlap: TimeInterval = 0.01
+
+    private func frame(_ i: Int) -> some View {
+        TimerGlyph(date: ref + Double(i) / Double(fps) - overlap,
+                   font: "\(prefix)\(i)-Regular", size: size)
+    }
+
+    private func blink(_ i: Int) -> some View {
+        TimerGlyph(date: ref + Double(i) / Double(fps) - overlap,
+                   font: "WABlink2-Regular", size: size)
+    }
+
+    var body: some View {
+        ZStack {
+            ZStack {
+                frame(0)
+                ForEach(1..<fps, id: \.self) { i in
+                    frame(i).mask { blink(i) }
+                }
+            }
+            ZStack {
+                ForEach(fps..<(2 * fps), id: \.self) { i in
+                    frame(i).mask { blink(i) }
+                }
+            }
+            .mask {
+                TimerGlyph(date: ref + 1, font: "WABlink2-Regular", size: size)
             }
         }
         .frame(width: size, height: size)

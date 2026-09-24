@@ -12,17 +12,18 @@ jobs:
   probe:
     # На домашнем экране симулятора iOS 27 виджеты замороженные (не тикает даже системный
     # таймер), на iOS 26.5 — живые. Поэтому только macos-26; задания различаются тем,
-    # что показывает первый виджет (Shared/Variant.swift): перекрытие окон и длина анимации.
+    # что показывает первый виджет (Shared/Variant.swift). Все 10 режимов
+    # присутствуют в каждом bundle; только первый переключается матрицей.
     strategy:
       fail-fast: false
       matrix:
-        # Размер, длина цикла, число слоёв в стопке и общие маски доли секунды.
-        mode: [len160s, len80c20, split160, grp80, grp160]
+        # Серия B: частота и перекрытие. Серия A: sbix и SVG-шрифты.
+        mode: [fps8, fps12, fps16, fps24, fps30, fps24o0, fps30o0, fontA24, fontA30, fontA8svg]
     runs-on: macos-26
     env:
       SKIP_APP: "1"
       NO_ANALYZE: "1"
-      PROBE_SWIFT_FLAGS: LENGTH_EXPERIMENTS
+      PROBE_SWIFT_FLAGS: RATE_EXPERIMENTS
     timeout-minutes: 60
     steps:
       - uses: actions/checkout@v4
@@ -35,19 +36,10 @@ jobs:
           cd probe
           echo 'enum Variant { static let mode = "${{ matrix.mode }}" }' > Shared/Variant.swift
           cat Shared/Variant.swift
-          python3 -m pip install --quiet --break-system-packages pillow
-          # All three frame sets are bundled in every job, so the grp80 IPA can
-          # expose all five experiments while simulator jobs differ only by mode.
-          python3 make_frames.py --count 160 --size 150 --out LenFrames
-          for f in LenFrames/frame_*.png; do mv "$f" "LenFrames/len_${f#LenFrames/frame_}"; done
-          python3 make_frames.py --count 160 --size 48 --out SmallFrames
-          for f in SmallFrames/frame_*.png; do mv "$f" "SmallFrames/lens_${f#SmallFrames/frame_}"; done
-          python3 make_frames.py --count 80 --size 150 --out SlowFrames
-          for f in SlowFrames/frame_*.png; do mv "$f" "SlowFrames/slow_${f#SlowFrames/frame_}"; done
-          for dir in LenFrames SmallFrames SlowFrames; do
-            echo "$dir: $(find "$dir" -name '*.png' | wc -l) frames"
-          done
-          ls Fonts/WABlink{2,10,20}.ttf
+          python3 -m pip install --quiet --break-system-packages pillow fonttools
+          python3 prepare_rate.py
+          ls Fonts/WABlink2.ttf
+          echo "Rate images: $(find RateFrames -name '*.png' | wc -l)"
 
       - name: Install XcodeGen
         run: |
@@ -66,7 +58,7 @@ jobs:
           xcodebuild -project FontProbe.xcodeproj -scheme FontProbe -configuration Release \
             -sdk iphonesimulator -destination 'generic/platform=iOS Simulator' \
             -derivedDataPath build_sim CODE_SIGNING_ALLOWED=NO \
-            SWIFT_ACTIVE_COMPILATION_CONDITIONS=LENGTH_EXPERIMENTS build > build_sim.log 2>&1 \
+            SWIFT_ACTIVE_COMPILATION_CONDITIONS=RATE_EXPERIMENTS build > build_sim.log 2>&1 \
             || { grep -E "error:" build_sim.log | head -40; tail -40 build_sim.log; exit 1; }
           mkdir -p out
           cp -R build_sim/Build/Products/Release-iphonesimulator/FontProbe.app out/
@@ -74,13 +66,13 @@ jobs:
           xcrun vtool -show-build out/FontProbe.app/FontProbe | grep -E "platform|sdk"
 
       - name: Build IPA for device
-        if: matrix.mode == 'grp80'
+        if: matrix.mode == 'fps8'
         run: |
           cd probe
           xcodebuild -project FontProbe.xcodeproj -scheme FontProbe -configuration Release \
             -sdk iphoneos -destination 'generic/platform=iOS' \
             -derivedDataPath build_dev CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" \
-            SWIFT_ACTIVE_COMPILATION_CONDITIONS=LENGTH_EXPERIMENTS \
+            SWIFT_ACTIVE_COMPILATION_CONDITIONS=RATE_EXPERIMENTS \
             build > build_dev.log 2>&1 \
             || { grep -E "error:" build_dev.log | head -40; tail -40 build_dev.log; exit 1; }
           mkdir -p Payload
@@ -100,11 +92,31 @@ jobs:
           echo "markers $MARKERS"
           bash probe/run.sh "$MARKERS"
 
+      - name: Analyze numbered frames
+        run: |
+          python3 -m pip install --quiet --break-system-packages opencv-python-headless numpy
+          video=$(find probe/out -name home_widget.mp4 -print -quit)
+          case "${{ matrix.mode }}" in
+            fontA24) frames=240 ;;
+            fontA30) frames=120 ;;
+            fontA8svg) frames=80 ;;
+            fps24o0) frames=24 ;;
+            fps30o0) frames=30 ;;
+            fps*) frames=${{ matrix.mode }}; frames=${frames#fps} ;;
+          esac
+          # simctl recordVideo is variable-rate at up to about 60 samples/s.
+          # At 30 fps it can miss whole animation frames between samples.
+          cd probe
+          python3 analyze_cells.py "${video#probe/}" \
+            --cell "${{ matrix.mode }}:142,240,384,384:idx" \
+            --frames "$frames" --start 2 --end 25 | tee out/rate_analysis.txt
+
       - uses: actions/upload-artifact@v4
         if: always()
         with:
           name: font-probe-${{ matrix.mode }}
           path: |
             probe/out/ios*
+            probe/out/rate_analysis.txt
             probe/FontProbe.ipa
             probe/build_*.log

@@ -32,6 +32,8 @@ OUT="$PWD/out/ios$RTVER"
 mkdir -p "$OUT"
 
 record() {  # $1 — имя, $2 — секунды
+  # recordVideo writes variable-rate samples (up to roughly 60 fps); a 30 fps
+  # animation is close to the recorder's measurement limit.
   xcrun simctl io "$DEV" screenshot "$OUT/$1.png"
   xcrun simctl io "$DEV" recordVideo --codec=h264 --force "$OUT/$1.mp4" > "$OUT/$1_rec.txt" 2>&1 &
   local rec=$!
