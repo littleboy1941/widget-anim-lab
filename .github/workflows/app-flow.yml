@@ -24,7 +24,7 @@ jobs:
           python-version: "3.12"
 
       - name: Install video analysis dependencies
-        run: python3 -m pip install opencv-python-headless numpy
+        run: python3 -m pip install opencv-python-headless numpy pillow
 
       - name: Generate project
         run: cd app && xcodegen generate
