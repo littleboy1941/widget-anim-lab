@@ -1,0 +1,75 @@
+name: Simulator check
+
+# Почему на симуляторе iOS 27 виджет на домашнем экране заморожен (не тикает даже
+# системный таймер), а на iOS 26.5 живой? Прогоны 2026-09-23 шли на разных образах
+# (xcode-27 и macos-26), поэтому здесь оба рантайма на ОДНОЙ машине xcode-27:
+# замёрзнет и 26.x — виновата машина, живой 26.x — виноват рантайм iOS 27.
+on:
+  workflow_dispatch:
+
+jobs:
+  sim:
+    strategy:
+      fail-fast: false
+      matrix:
+        runtime: ["26.", "27."]
+    runs-on: xcode-27
+    timeout-minutes: 60
+    env:
+      SKIP_APP: "1"
+      NO_ANALYZE: "1"
+      RUNTIME_PREFIX: ${{ matrix.runtime }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Machine and runtimes
+        run: |
+          sw_vers; xcodebuild -version
+          system_profiler SPDisplaysDataType | head -20 || true
+          xcrun simctl list runtimes
+
+      - name: Ensure iOS runtime
+        run: |
+          if ! xcrun simctl list runtimes | grep -q "iOS $RUNTIME_PREFIX"; then
+            case "$RUNTIME_PREFIX" in
+              26.) xcodebuild -downloadPlatform iOS -buildVersion 26.5 ;;
+              *)   xcodebuild -downloadPlatform iOS ;;
+            esac
+          fi
+          xcrun simctl list runtimes
+
+      - name: Variant and frames
+        run: |
+          cd probe
+          echo 'enum Variant { static let mode = "len12" }' > Shared/Variant.swift
+          python3 -m pip install --quiet --break-system-packages pillow
+          python3 make_frames.py --count 160 --size 150 --out LenFrames
+          for f in LenFrames/frame_*.png; do mv "$f" "LenFrames/len_${f#LenFrames/frame_}"; done
+
+      - name: Install XcodeGen
+        run: |
+          curl -sL -o xcodegen.zip https://github.com/yonaskolb/XcodeGen/releases/latest/download/xcodegen.zip
+          unzip -q xcodegen.zip -d xcodegen
+          echo "$PWD/xcodegen/xcodegen/bin" >> "$GITHUB_PATH"
+
+      - name: Build for simulator
+        run: |
+          cd probe && xcodegen generate
+          xcodebuild -project FontProbe.xcodeproj -scheme FontProbe -configuration Release \
+            -sdk iphonesimulator -destination 'generic/platform=iOS Simulator' \
+            -derivedDataPath build_sim CODE_SIGNING_ALLOWED=NO build > build_sim.log 2>&1 \
+            || { grep -E "error:" build_sim.log | head -40; tail -40 build_sim.log; exit 1; }
+          mkdir -p out
+          cp -R build_sim/Build/Products/Release-iphonesimulator/FontProbe.app out/
+          codesign -f -s - --deep out/FontProbe.app
+
+      - name: Run in simulator
+        run: bash probe/run.sh "-"
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: sim-check-ios${{ matrix.runtime }}
+          path: |
+            probe/out/ios*
+            probe/build_*.log

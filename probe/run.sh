@@ -8,7 +8,11 @@ MARKERS=$1
 
 read -r RT RTVER < <(xcrun simctl list runtimes -j | python3 -c '
 import json, sys
+import os
 rs = [r for r in json.load(sys.stdin)["runtimes"] if r["name"].startswith("iOS") and r.get("isAvailable")]
+# RUNTIME_PREFIX (например "26.") — взять самый новый iOS этой ветки, иначе самый новый вообще
+pre = os.environ.get("RUNTIME_PREFIX", "")
+rs = [r for r in rs if r["version"].startswith(pre)] or sys.exit("нет рантайма iOS " + pre)
 rs.sort(key=lambda r: [int(p) for p in r["version"].split(".")])
 print(rs[-1]["identifier"], rs[-1]["version"])')
 DT=$(xcrun simctl list runtimes -j | python3 -c '
