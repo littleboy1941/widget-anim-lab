@@ -76,6 +76,6 @@ record "home_widget" 20
 # падения расширения и его сообщения — если виджета нет в галерее или он пустой
 mkdir -p "$OUT/crash"
 find ~/Library/Logs/DiagnosticReports -name "*FontProbe*" -exec cp {} "$OUT/crash/" \; 2>/dev/null
-timeout 180 xcrun simctl spawn "$DEV" log show --last 10m --style compact   --predicate 'process CONTAINS "FontProbe" OR eventMessage CONTAINS "fontprobe"'   > "$OUT/widget_log.txt" 2>&1 || true
+perl -e 'alarm 180; exec @ARGV' xcrun simctl spawn "$DEV" log show --last 10m --style compact   --predicate 'process CONTAINS "FontProbe" OR eventMessage CONTAINS "fontprobe"'   > "$OUT/widget_log.txt" 2>&1 || true
 wc -l "$OUT/widget_log.txt"; ls "$OUT/crash"
 xcrun simctl shutdown "$DEV" || true
