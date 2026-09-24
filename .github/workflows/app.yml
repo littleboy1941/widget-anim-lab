@@ -43,6 +43,20 @@ jobs:
             }
           tail -15 ci-out/build.log
 
+      - name: Build IPA for device (unsigned, SideStore re-signs)
+        run: |
+          cd app
+          xcodebuild -project WidgetLab.xcodeproj -scheme WidgetLab -configuration Release             -sdk iphoneos -destination 'generic/platform=iOS'             -derivedDataPath ci-out/build-dev CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY=""             build > ci-out/build-dev.log 2>&1 || {
+              grep -E 'error:' ci-out/build-dev.log | head -60 || true
+              tail -60 ci-out/build-dev.log
+              exit 1
+            }
+          rm -rf Payload && mkdir Payload
+          cp -R ci-out/build-dev/Build/Products/Release-iphoneos/WidgetLab.app Payload/
+          find Payload -name "*.appex" -o -name "*.gif" -o -name "WABlink*.ttf" | head -20
+          zip -qry ci-out/WidgetLab.ipa Payload
+          ls -la ci-out/WidgetLab.ipa
+
       - name: Ensure iOS simulator runtime
         run: xcrun simctl list runtimes | grep -q 'iOS' || xcodebuild -downloadPlatform iOS
 
@@ -85,3 +99,5 @@ jobs:
             app/ci-out/build.log
             app/ci-out/test.log
             app/ci-out/test.xcresult
+            app/ci-out/build-dev.log
+            app/ci-out/WidgetLab.ipa
