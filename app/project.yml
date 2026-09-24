@@ -1,0 +1,88 @@
+name: WidgetLab
+options:
+  bundleIdPrefix: com.widgetlab.app
+  deploymentTarget:
+    iOS: "18.0"
+settings:
+  base:
+    SWIFT_VERSION: "5.0"
+    TARGETED_DEVICE_FAMILY: "1"
+    MARKETING_VERSION: "0.1"
+    CURRENT_PROJECT_VERSION: "1"
+    CODE_SIGNING_ALLOWED: "NO"
+    CODE_SIGNING_REQUIRED: "NO"
+    CODE_SIGN_IDENTITY: ""
+    COMPRESS_PNG_FILES: "NO"
+targets:
+  WidgetLab:
+    type: application
+    platform: iOS
+    sources:
+      - path: Shared
+      - path: App/WidgetLabApp.swift
+      - path: Resources
+        buildPhase: resources
+    dependencies:
+      - target: WidgetLabWidget
+    info:
+      path: App/Info.plist
+      properties:
+        CFBundleDisplayName: WidgetLab
+        UILaunchScreen: {}
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.widgetlab.app
+        CODE_SIGN_ENTITLEMENTS: App/App.entitlements
+  WidgetLabWidget:
+    type: app-extension
+    platform: iOS
+    sources:
+      - path: Shared
+      - path: Widget/AnimationWidget.swift
+      - path: Fonts
+        buildPhase: resources
+    info:
+      path: Widget/Info.plist
+      properties:
+        CFBundleDisplayName: WidgetLabWidget
+        NSExtension:
+          NSExtensionPointIdentifier: com.apple.widgetkit-extension
+        UIAppFonts:
+          - WABlink2.ttf
+          - WABlink3.ttf
+          - WABlink4.ttf
+          - WABlink5.ttf
+          - WABlink6.ttf
+          - WABlink10.ttf
+          - WABlink12.ttf
+          - WABlink15.ttf
+          - WABlink20.ttf
+          - WABlink30.ttf
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.widgetlab.app.widget
+        CODE_SIGN_ENTITLEMENTS: Widget/Widget.entitlements
+  WidgetLabTests:
+    type: bundle.unit-test
+    platform: iOS
+    sources:
+      - path: Shared
+      - path: Tests
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.widgetlab.app.tests
+        GENERATE_INFOPLIST_FILE: "YES"
+        TEST_HOST: ""
+        BUNDLE_LOADER: ""
+schemes:
+  WidgetLab:
+    build:
+      targets:
+        WidgetLab: all
+  WidgetLabTests:
+    build:
+      targets:
+        WidgetLabTests: all
+    test:
+      targets:
+        - WidgetLabTests
