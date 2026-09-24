@@ -81,6 +81,7 @@ struct WidgetFramePlacement: View {
 }
 
 struct ImageFramesAnimation: View {
+    static let stackSize = 40
     let reference: Date
     let variant: WidgetVariant
     let frames: [UIImage]
@@ -88,22 +89,30 @@ struct ImageFramesAnimation: View {
     var body: some View {
         GeometryReader { geometry in
             let side = max(geometry.size.width, geometry.size.height)
+            // Стопки по ≤40 слоёв: 160 крупных кадров в ОДНОЙ ZStack ломали анимацию
+            // (2,5 смены/с), те же 160 кадров в 4 стопках по 40 — 8,0/с, 100 % по порядку
+            // (стенд, прогон 36025144578, 2026-09-24).
             ZStack {
-                ForEach(frames.indices, id: \.self) { index in
-                    WidgetFramePlacement(image: frames[index], width: variant.width,
-                                         height: variant.height, pixelArt: variant.pixelArt)
-                        .mask {
-                            ZStack {
-                                ForEach(variant.phaseToFrame.indices.filter {
-                                    variant.phaseToFrame[$0] == index
-                                }, id: \.self) { phase in
-                                    PhaseWindow(reference: reference, phase: phase,
-                                                fps: variant.fps, cycle: variant.cycle,
-                                                size: side, overlap: variant.overlapSeconds)
+                ForEach(Array(stride(from: 0, to: frames.count, by: Self.stackSize)), id: \.self) { start in
+                    ZStack {
+                        ForEach(start..<min(start + Self.stackSize, frames.count), id: \.self) { index in
+                            WidgetFramePlacement(image: frames[index], width: variant.width,
+                                                 height: variant.height, pixelArt: variant.pixelArt)
+                                .mask {
+                                    ZStack {
+                                        ForEach(variant.phaseToFrame.indices.filter {
+                                            variant.phaseToFrame[$0] == index
+                                        }, id: \.self) { phase in
+                                            PhaseWindow(reference: reference, phase: phase,
+                                                        fps: variant.fps, cycle: variant.cycle,
+                                                        size: side, overlap: variant.overlapSeconds)
+                                        }
+                                    }
+                                    .frame(width: geometry.size.width, height: geometry.size.height)
                                 }
-                            }
-                            .frame(width: geometry.size.width, height: geometry.size.height)
                         }
+                    }
+                    .frame(width: geometry.size.width, height: geometry.size.height)
                 }
             }
             .frame(width: geometry.size.width, height: geometry.size.height)

@@ -38,7 +38,7 @@ final class CoreTests: XCTestCase {
         for plan in plans {
             XCTAssertTrue((4...12).contains(plan.fps))
             XCTAssertEqual(60 % plan.cycle, 0)
-            XCTAssertLessThanOrEqual(plan.phaseCount, 40)
+            XCTAssertLessThanOrEqual(plan.phaseCount, AnimationBudget.standard.maxPhases)
             XCTAssertEqual(plan.phaseCount % plan.slotCount, 0)
             XCTAssertEqual(plan.phaseToFrame.count, plan.phaseCount)
             // петля по кругу: фаза i показывает слот i mod N, кадр меняется каждую 1/fps с
