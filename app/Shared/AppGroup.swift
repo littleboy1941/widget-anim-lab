@@ -9,9 +9,12 @@ enum AppGroup {
     static let base = "group.widgetlab.app"
 
     private static let profile = ProvisioningProfile.load()
+    private static let altGroups = Bundle.main.object(forInfoDictionaryKey: "ALTAppGroups") as? [String] ?? []
 
     static let identifier: String = {
-        let candidates = profile.groups.sorted { a, b in
+        // SideStore 0.6.x пишет выданные группы в Info.plist (ALTAppGroups), имя вида
+        // group.widgetlab.app.<TEAMID>; затем группы профиля; затем базовое имя
+        let candidates = (altGroups + profile.groups).sorted { a, b in
             a.hasPrefix(base) && !b.hasPrefix(base)
         } + [base]
         return candidates.first { FileManager.default.containerURL(
@@ -24,7 +27,8 @@ enum AppGroup {
         let profileState = profile.found ? "found" : "absent"
         let groups = profile.groups.isEmpty ? "none" : profile.groups.joined(separator: ", ")
         let team = profile.teamID ?? "?"
-        return "tried \(identifier); profile \(profileState); groups: \(groups); team \(team); bundle \(bundle)"
+        let alt = altGroups.isEmpty ? "none" : altGroups.joined(separator: ", ")
+        return "tried \(identifier); ALTAppGroups: \(alt); profile \(profileState); groups: \(groups); team \(team); bundle \(bundle)"
     }
 
     static var source: String { profile.found ? "embedded.mobileprovision" : "base (no embedded.mobileprovision)" }

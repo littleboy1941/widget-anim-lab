@@ -53,6 +53,12 @@ jobs:
             }
           rm -rf Payload && mkdir Payload
           cp -R ci-out/build-dev/Build/Products/Release-iphoneos/WidgetLab.app Payload/
+          # Ad-hoc подпись с entitlements: SideStore берёт App Groups из подписи бинарника
+          # (AltSign через ldid); без неё группа не регистрируется и containerURL = nil.
+          codesign -f -s - --entitlements Widget/Widget.entitlements Payload/WidgetLab.app/PlugIns/WidgetLabWidget.appex
+          codesign -f -s - --entitlements App/App.entitlements Payload/WidgetLab.app
+          codesign -d --entitlements - Payload/WidgetLab.app/PlugIns/WidgetLabWidget.appex 2>&1 | grep -A3 application-groups
+          codesign -d --entitlements - Payload/WidgetLab.app 2>&1 | grep -A3 application-groups
           find Payload -name "*.appex" -o -name "*.gif" -o -name "WABlink*.ttf" | head -20
           zip -qry ci-out/WidgetLab.ipa Payload
           ls -la ci-out/WidgetLab.ipa
