@@ -36,6 +36,27 @@ jobs:
           unzip -q xcodegen.zip -d xcodegen
           echo "$PWD/xcodegen/xcodegen/bin" >> "$GITHUB_PATH"
 
+      - name: Generate stress fixtures for the test bundle
+        run: |
+          python3 -m pip install pillow --break-system-packages
+          cd app
+          python3 tools/make_stress_fixtures.py
+          python3 - <<'PY'
+          from pathlib import Path
+
+          project = Path("project.yml")
+          text = project.read_text()
+          anchor = "      - path: Resources/test.gif\n        buildPhase: resources\n"
+          assert text.count(anchor) == 1
+          fixtures = sorted(Path("StressFixtures").iterdir())
+          resources = "".join(
+              f"      - path: StressFixtures/{path.name}\n"
+              "        buildPhase: resources\n"
+              for path in fixtures
+          )
+          project.write_text(text.replace(anchor, anchor + resources))
+          PY
+
       - name: Generate project
         run: |
           xcodebuild -version
@@ -108,7 +129,7 @@ jobs:
               tail -80 ci-out/test.log
               exit 1
             }
-          grep -E 'Test Case|Executed|TEST SUCCEEDED' ci-out/test.log | tail -40 || true
+          grep -E 'STRESS |Test Case|Executed|TEST SUCCEEDED' ci-out/test.log | tail -80 || true
 
       - uses: actions/upload-artifact@v4
         if: always()

@@ -4,13 +4,8 @@ import ImageIO
 import UniformTypeIdentifiers
 
 /// Держит источник и метаданные, а пиксели декодирует только по запросу.
-final class GIFImporter {
-    struct FrameInfo {
-        let index: Int
-        let startTime: Double
-        let duration: Double
-        let rawDuration: Double
-    }
+final class GIFImporter: AnimationSource {
+    typealias FrameInfo = AnimationFrameInfo
 
     enum ImportError: Error {
         case unreadableFile

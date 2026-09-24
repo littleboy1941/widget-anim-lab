@@ -129,7 +129,7 @@ struct ProjectListView: View {
                     }
                     if rows.isEmpty && error == nil {
                         ContentUnavailableView("Пока нет анимаций", systemImage: "square.stack",
-                                               description: Text("Нажмите + и выберите GIF, APNG или WebP."))
+                                               description: Text("Нажмите + и выберите анимацию, видео или Live Photo."))
                     }
             }
             .listStyle(.plain)
@@ -246,7 +246,7 @@ struct ProjectListView: View {
                 }
                 let publishedIDs = Set(manifests.map(\.id))
                 for settings in editable where !publishedIDs.contains(settings.id) {
-                    let importer = try? GIFImporter(url: documents.sourceURL(settings))
+                    let importer = try? documents.source(for: settings)
                     let plan = importer.flatMap { try? settings.resolvedPlan(importer: $0) }
                     let image = importer.flatMap { try? $0.thumbnail(at: 0, maxPixelSize: 128) }
                         .map { UIImage(cgImage: $0) }
@@ -280,7 +280,7 @@ struct ProjectListView: View {
                 let documents = try ProjectDocuments()
                 let original = try documents.load(id)
                 let copy = try documents.duplicate(original)
-                let importer = try GIFImporter(url: documents.sourceURL(copy))
+                let importer = try documents.source(for: copy)
                 let draft = try RenderPipeline.makeDraft(importer: importer, settings: copy)
                 try ProjectStore(groupIdentifier: groupID).publish(draft)
                 WidgetCenter.shared.reloadAllTimelines()

@@ -3,21 +3,62 @@ import PhotosUI
 import CoreTransferable
 import UniformTypeIdentifiers
 import UIKit
+import Photos
 
 private struct PhotoSourceFile: Transferable {
     let url: URL
 
     static var transferRepresentation: some TransferRepresentation {
         FileRepresentation(importedContentType: .image) { received in
-            let source = received.file
-            let bytes = try source.resourceValues(forKeys: [.fileSizeKey]).fileSize ?? 0
-            guard bytes <= GIFImporter.maxSourceBytes else {
-                throw GIFImporter.ImportError.sourceTooLarge
+            try copied(received.file, fallbackExtension: "gif")
+        }
+        FileRepresentation(importedContentType: .movie) { received in
+            try copied(received.file, fallbackExtension: "mov")
+        }
+    }
+
+    private static func copied(_ source: URL, fallbackExtension: String) throws -> PhotoSourceFile {
+        let bytes = try source.resourceValues(forKeys: [.fileSizeKey]).fileSize ?? 0
+        guard bytes <= GIFImporter.maxSourceBytes else {
+            throw GIFImporter.ImportError.sourceTooLarge
+        }
+        let ext = source.pathExtension.isEmpty ? fallbackExtension : source.pathExtension
+        let target = FileManager.default.temporaryDirectory
+            .appendingPathComponent("photo-\(UUID().uuidString).\(ext)")
+        try FileManager.default.copyItem(at: source, to: target)
+        return PhotoSourceFile(url: target)
+    }
+}
+
+private enum LivePhotoVideo {
+    static func copy(from item: PhotosPickerItem) async throws -> URL {
+        guard let livePhoto = try await item.loadTransferable(type: PHLivePhoto.self) else {
+            throw AppError(code: "E_READ_FAILED", message: "Не удалось открыть Live Photo.",
+                           hint: "Попробуйте экспортировать Live Photo в «Файлы».")
+        }
+        let resources = PHAssetResource.assetResources(for: livePhoto)
+        guard let paired = resources.first(where: { $0.type == .fullSizePairedVideo }) ??
+                resources.first(where: { $0.type == .pairedVideo }) else {
+            throw AppError(code: "E_NOT_ANIMATED", message: "У Live Photo нет парного видео.",
+                           hint: "Выберите Live Photo с движением или отдельное видео.")
+        }
+        let target = FileManager.default.temporaryDirectory
+            .appendingPathComponent("live-photo-\(UUID().uuidString).mov")
+        do {
+            let options = PHAssetResourceRequestOptions()
+            options.isNetworkAccessAllowed = true
+            try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
+                PHAssetResourceManager.default().writeData(for: paired, toFile: target,
+                    options: options) { failure in
+                    if let failure { continuation.resume(throwing: failure) }
+                    else { continuation.resume() }
+                }
             }
-            let target = FileManager.default.temporaryDirectory
-                .appendingPathComponent("photo-\(UUID().uuidString)")
-            try FileManager.default.copyItem(at: source, to: target)
-            return PhotoSourceFile(url: target)
+            try Task.checkCancellation()
+            return target
+        } catch {
+            try? FileManager.default.removeItem(at: target)
+            throw error
         }
     }
 }
@@ -34,20 +75,20 @@ struct ImportView: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 16) {
-                PhotosPicker(selection: $photo, matching: .images,
+                PhotosPicker(selection: $photo, matching: .any(of: [.images, .videos, .livePhotos]),
                              preferredItemEncoding: .current) {
                     Label("Из «Фото»", systemImage: "photo.on.rectangle")
                         .frame(maxWidth: .infinity, minHeight: 72)
                 }
                 .buttonStyle(.borderedProminent)
-                Text("Копирую оригинал во временный файл. Лимит исходника — 150 МБ и 80 Мпикс.")
+                Text("Копирую оригинал во временный файл. Лимит — 150 МБ; видео — до 60 с.")
                     .font(.caption).foregroundStyle(.secondary)
                 Button { showFiles = true } label: {
                     Label("Из «Файлов»", systemImage: "folder")
                         .frame(maxWidth: .infinity, minHeight: 72)
                 }
                 .buttonStyle(.bordered)
-                Text("GIF, APNG или WebP").font(.caption).foregroundStyle(.secondary)
+                Text("GIF, APNG, WebP, MP4, MOV или M4V").font(.caption).foregroundStyle(.secondary)
                 if working {
                     ProgressView(value: progress)
                     Button("Остановить", role: .cancel) {
@@ -60,7 +101,8 @@ struct ImportView: View {
         }
         .background(.black)
         .navigationTitle("Импорт анимации")
-        .fileImporter(isPresented: $showFiles, allowedContentTypes: [.gif, .png, .webP]) { result in
+        .fileImporter(isPresented: $showFiles, allowedContentTypes:
+            [.gif, .png, .webP, .movie, .mpeg4Movie, .quickTimeMovie]) { result in
             switch result {
             case .success(let url): importFile(url)
             case .failure(let failure): report(failure)
@@ -77,13 +119,20 @@ struct ImportView: View {
         working = true; progress = 0; error = nil
         worker = Task.detached(priority: .userInitiated) {
             do {
-                guard let source = try await item.loadTransferable(type: PhotoSourceFile.self) else {
-                    throw AppError(code: "E_READ_FAILED", message: "«Фото» не вернуло исходные данные.",
-                                   hint: "Попробуйте экспортировать GIF в «Файлы».")
+                let isLive = item.supportedContentTypes.contains { $0.conforms(to: .livePhoto) }
+                let sourceURL: URL
+                if isLive {
+                    sourceURL = try await LivePhotoVideo.copy(from: item)
+                } else {
+                    guard let source = try await item.loadTransferable(type: PhotoSourceFile.self) else {
+                        throw AppError(code: "E_READ_FAILED", message: "«Фото» не вернуло исходные данные.",
+                                       hint: "Попробуйте экспортировать исходник в «Файлы».")
+                    }
+                    sourceURL = source.url
                 }
-                defer { try? FileManager.default.removeItem(at: source.url) }
+                defer { try? FileManager.default.removeItem(at: sourceURL) }
                 try Task.checkCancellation()
-                let settings = try ProjectDocuments().importFile(source.url, name: "Анимация из Фото")
+                let settings = try ProjectDocuments().importFile(sourceURL, name: "Анимация из Фото")
                 try Task.checkCancellation()
                 await MainActor.run { working = false; onImported(settings.id) }
             } catch {
@@ -121,7 +170,7 @@ struct ImportView: View {
 }
 
 private struct AnalysisInfo {
-    let importer: GIFImporter
+    let importer: any AnimationSource
     let image: UIImage
 }
 
@@ -143,11 +192,16 @@ struct AnalysisView: View {
                     row("Холст", "\(info.importer.canvasWidth) × \(info.importer.canvasHeight)")
                     row("Кадры", "\(info.importer.frames.count)")
                     row("Длительность", String(format: "%.2f с", info.importer.totalDuration))
-                    let delays = info.importer.frames.map(\.rawDuration)
-                    row("Задержки", String(format: "%.0f–%.0f мс", (delays.min() ?? 0) * 1000, (delays.max() ?? 0) * 1000))
-                    row("Прозрачность", info.importer.hasTransparency ? "есть" : "не обнаружена")
-                    if info.importer.correctedDelayCount > 0 {
-                        warning("\(info.importer.correctedDelayCount) нулевых/коротких задержек (<20 мс) заменены на 100 мс.")
+                    if let video = info.importer as? VideoSource {
+                        row("FPS источника", String(format: "%.2f", video.nominalFrameRate))
+                        row("Звук", video.hasAudio ? "есть — игнорируется" : "нет")
+                    } else if let gif = info.importer as? GIFImporter {
+                        let delays = gif.frames.map(\.rawDuration)
+                        row("Задержки", String(format: "%.0f–%.0f мс", (delays.min() ?? 0) * 1000, (delays.max() ?? 0) * 1000))
+                        row("Прозрачность", gif.hasTransparency ? "есть" : "не обнаружена")
+                        if gif.correctedDelayCount > 0 {
+                            warning("\(gif.correctedDelayCount) нулевых/коротких задержек (<20 мс) заменены на 100 мс.")
+                        }
                     }
                     if info.importer.totalDuration > 5 {
                         warning("Анимация длиннее типового плана 8 fps. В редакторе предложен фрагмент; можно выбрать целиком с меньшим fps.")
@@ -182,7 +236,7 @@ struct AnalysisView: View {
             let value = try await Task.detached(priority: .utility) { () -> AnalysisInfo in
                 let documents = try ProjectDocuments()
                 let settings = try documents.load(id)
-                let importer = try GIFImporter(url: documents.sourceURL(settings))
+                let importer = try documents.source(for: settings)
                 let first = try importer.thumbnail(at: 0, maxPixelSize: 500)
                 return AnalysisInfo(importer: importer, image: UIImage(cgImage: first))
             }.value

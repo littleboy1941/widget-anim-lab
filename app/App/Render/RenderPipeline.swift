@@ -31,7 +31,7 @@ enum RenderPipeline {
         return nil
     }
 
-    static func makeDraft(importer: GIFImporter, settings: EditorSettings,
+    static func makeDraft(importer: any AnimationSource, settings: EditorSettings,
                           sizes: Set<WidgetSize> = Set(WidgetSize.allCases),
                           budget: AnimationBudget = .standard,
                           progress: (Double) -> Void = { _ in }) throws -> ProjectDraft {
@@ -78,7 +78,7 @@ enum RenderPipeline {
                             variants: variants)
     }
 
-    static func previewFrame(importer: GIFImporter, settings: EditorSettings,
+    static func previewFrame(importer: any AnimationSource, settings: EditorSettings,
                              size: WidgetSize, sourceIndex: Int) throws -> Data {
         let encoded = try JSONEncoder().encode(settings)
         let digest = SHA256.hash(data: encoded).map { String(format: "%02x", $0) }.joined()
@@ -95,7 +95,7 @@ enum RenderPipeline {
         return data
     }
 
-    static func resolvedStyle(importer: GIFImporter, settings: EditorSettings,
+    static func resolvedStyle(importer: any AnimationSource, settings: EditorSettings,
                               plan: AnimationPlanner.Plan) throws -> FrameProcessor.Style {
         guard let first = plan.uniqueSourceIndices.first else {
             throw AppError(code: "E_PLAN_INVALID", message: "В плане нет кадров.", hint: "Выберите другой план.")

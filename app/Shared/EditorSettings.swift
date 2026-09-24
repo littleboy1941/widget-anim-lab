@@ -95,13 +95,13 @@ struct EditorSettings: Codable, Equatable {
         })
     }
 
-    func selectedFrameIndices(in importer: GIFImporter) -> [Int] {
+    func selectedFrameIndices(in importer: any AnimationSource) -> [Int] {
         importer.frames.filter {
             $0.startTime < fragmentEnd && $0.startTime + $0.duration > fragmentStart
         }.map(\.index)
     }
 
-    func selectedFrameDurations(in importer: GIFImporter) -> [Double] {
+    func selectedFrameDurations(in importer: any AnimationSource) -> [Double] {
         selectedFrameIndices(in: importer).map { index in
             let frame = importer.frames[index]
             return Self.intersectionDuration(frameStart: frame.startTime,
@@ -117,7 +117,7 @@ struct EditorSettings: Codable, Equatable {
         return max(0, end - start)
     }
 
-    func availablePlans(importer: GIFImporter,
+    func availablePlans(importer: any AnimationSource,
                         budget: AnimationBudget = .standard) throws -> [AnimationPlanner.Plan] {
         let pixels = WidgetSize.allCases.compactMap { size -> Int? in
             guard let item = geometry[size], FrameProcessor.validDimensions(item.width, item.height),
@@ -142,7 +142,7 @@ struct EditorSettings: Codable, Equatable {
         }
     }
 
-    func resolvedPlan(importer: GIFImporter,
+    func resolvedPlan(importer: any AnimationSource,
                       budget: AnimationBudget = .standard) throws -> AnimationPlanner.Plan {
         let plans = try availablePlans(importer: importer, budget: budget)
         guard let choice = selectedPlan,
@@ -218,6 +218,25 @@ struct AppError: Error, Identifiable, Equatable {
                 return AppError(code: "E_SOURCE_TOO_LARGE", message: "Файл исходника превышает 150 МБ.",
                                 hint: "Выберите файл меньшего размера.")
             default: break
+            }
+        }
+        if let video = error as? VideoSourceError {
+            switch video {
+            case .sourceTooLong:
+                return AppError(code: "E_SOURCE_TOO_LONG", message: "Видео длиннее 60 секунд.",
+                                hint: "Выберите фрагмент до 60 секунд в «Фото» или «Файлах» и импортируйте его снова.")
+            case .noVideoTrack, .invalidDuration:
+                return AppError(code: "E_NOT_ANIMATED", message: "В файле нет пригодного видеоряда.",
+                                hint: "Выберите MP4, MOV, M4V или Live Photo с видео.")
+            case .decodeFailed(let index):
+                return AppError(code: "E_READ_FAILED", message: "Не прочитан видеокадр \(index).",
+                                hint: "Попробуйте другой исходник.")
+            case .mainThreadInitialization:
+                return AppError(code: "E_READ_FAILED", message: "Видео открыто в главном потоке.",
+                                hint: "Повторите импорт.")
+            case .invalidSize:
+                return AppError(code: "E_READ_FAILED", message: "Недопустимый размер видеокадра.",
+                                hint: "Выберите другое видео.")
             }
         }
         if error is FrameProcessor.ProcessingError {

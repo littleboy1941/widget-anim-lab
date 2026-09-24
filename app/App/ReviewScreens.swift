@@ -6,7 +6,7 @@ struct ReviewView: View {
     let id: UUID
     let onSaved: () -> Void
     @State private var settings: EditorSettings?
-    @State private var importer: GIFImporter?
+    @State private var importer: (any AnimationSource)?
     @State private var plan: AnimationPlanner.Plan?
     @State private var included = Set(WidgetSize.allCases)
     @State private var error: AppError?
@@ -47,8 +47,8 @@ struct ReviewView: View {
                         compromise("Неравномерные задержки выровнены до \(plan.fps) fps")
                     }
                     if settings.speed != 1 { compromise("Скорость ×\(String(format: "%.2f", settings.speed))") }
-                    if importer.correctedDelayCount > 0 {
-                        compromise("\(importer.correctedDelayCount) коротких задержек → 100 мс")
+                    if let gif = importer as? GIFImporter, gif.correctedDelayCount > 0 {
+                        compromise("\(gif.correctedDelayCount) коротких задержек → 100 мс")
                     }
                     if seamImages.count == 2 {
                         Text("СТЫК ПЕТЛИ: ПОСЛЕДНИЙ → ПЕРВЫЙ")
@@ -114,10 +114,10 @@ struct ReviewView: View {
 
     private func load() async {
         do {
-            let result = try await Task.detached(priority: .utility) { () -> (EditorSettings, GIFImporter) in
+            let result = try await Task.detached(priority: .utility) { () -> (EditorSettings, any AnimationSource) in
                 let documents = try ProjectDocuments()
                 let settings = try documents.load(id)
-                return (settings, try GIFImporter(url: documents.sourceURL(settings)))
+                return (settings, try documents.source(for: settings))
             }.value
             settings = result.0; importer = result.1
             refreshPlan()
@@ -204,7 +204,7 @@ struct ReviewView: View {
         worker = Task.detached(priority: .userInitiated) {
             do {
                 let documents = try ProjectDocuments()
-                let importer = try GIFImporter(url: documents.sourceURL(settings))
+                let importer = try documents.source(for: settings)
                 let draft = try RenderPipeline.makeDraft(importer: importer,
                     settings: settings, sizes: sizes) { value in
                     Task { @MainActor in progress = value }

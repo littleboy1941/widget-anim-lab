@@ -2,7 +2,7 @@ import SwiftUI
 
 struct DevPanelView: View {
     let settings: EditorSettings
-    let importer: GIFImporter
+    let importer: any AnimationSource
     let plan: AnimationPlanner.Plan?
 
     @Environment(\.dismiss) private var dismiss
@@ -23,10 +23,15 @@ struct DevPanelView: View {
                         datum("Холст", "\(importer.canvasWidth) × \(importer.canvasHeight)")
                         datum("Байты", "\(importer.fileBytes)")
                         datum("Кадры / длительность", "\(importer.frames.count) / \(seconds(importer.totalDuration)) с")
-                        let raw = importer.frames.map(\.rawDuration)
-                        datum("Задержки min / max", "\(seconds(raw.min() ?? 0)) / \(seconds(raw.max() ?? 0)) с")
-                        datum("Заменено <20 мс", "\(importer.correctedDelayCount)")
-                        datum("Прозрачность", importer.hasTransparency ? "да" : "нет")
+                        if let video = importer as? VideoSource {
+                            datum("FPS источника", String(format: "%.2f", video.nominalFrameRate))
+                            datum("Звук", video.hasAudio ? "есть — игнорируется" : "нет")
+                        } else if let gif = importer as? GIFImporter {
+                            let raw = gif.frames.map(\.rawDuration)
+                            datum("Задержки min / max", "\(seconds(raw.min() ?? 0)) / \(seconds(raw.max() ?? 0)) с")
+                            datum("Заменено <20 мс", "\(gif.correctedDelayCount)")
+                            datum("Прозрачность", gif.hasTransparency ? "да" : "нет")
+                        }
                     }
                     section("ПЛАН") {
                         datum("Фрагмент", "\(seconds(settings.fragmentStart))–\(seconds(settings.fragmentEnd)) с")

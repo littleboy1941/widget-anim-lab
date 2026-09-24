@@ -29,6 +29,15 @@ final class ProjectDocuments {
         directory(settings.id).appendingPathComponent(settings.sourceFile)
     }
 
+    func source(for settings: EditorSettings) throws -> any AnimationSource {
+        let url = sourceURL(settings)
+        let type = UTType(filenameExtension: url.pathExtension)
+        if type?.conforms(to: .movie) == true || Self.isVideoExtension(url.pathExtension) {
+            return try VideoSource(url: url)
+        }
+        return try GIFImporter(url: url)
+    }
+
     func load(_ id: UUID) throws -> EditorSettings {
         try JSONDecoder().decode(EditorSettings.self,
             from: Data(contentsOf: directory(id).appendingPathComponent("settings.json")))
@@ -75,16 +84,16 @@ final class ProjectDocuments {
     func importBytes(_ data: Data, name: String) throws -> EditorSettings {
         try Task.checkCancellation()
         guard data.count <= GIFImporter.maxSourceBytes else { throw GIFImporter.ImportError.sourceTooLarge }
-        let type = try Self.validateType(data)
+        let type = try Self.validateType(data, name: name)
         let id = UUID()
-        let sourceName = "source.\(type.preferredFilenameExtension ?? "gif")"
+        let sourceName = Self.sourceName(type: type, originalName: name)
         let folder = directory(id)
         try fm.createDirectory(at: folder, withIntermediateDirectories: true)
         do {
             let source = folder.appendingPathComponent(sourceName)
             try data.write(to: source, options: .atomic)
             try Task.checkCancellation()
-            let importer = try GIFImporter(url: source)
+            let importer = try self.source(at: source, type: type)
             let settings = try initialSettings(id: id, name: name, sourceName: sourceName,
                                                importer: importer)
             try save(settings)
@@ -126,11 +135,11 @@ final class ProjectDocuments {
                 written += chunk.count
                 if total > 0 { progress(min(1, Double(written) / Double(total))) }
             }
-            let type = try Self.validateType(temporary)
-            let sourceName = "source.\(type.preferredFilenameExtension ?? "gif")"
+            let type = try Self.validateType(temporary, name: url.lastPathComponent)
+            let sourceName = Self.sourceName(type: type, originalName: url.lastPathComponent)
             let source = folder.appendingPathComponent(sourceName)
             try fm.moveItem(at: temporary, to: source)
-            let importer = try GIFImporter(url: source)
+            let importer = try self.source(at: source, type: type)
             let settings = try initialSettings(id: id, name: name, sourceName: sourceName,
                                                importer: importer)
             try save(settings)
@@ -143,46 +152,62 @@ final class ProjectDocuments {
         }
     }
 
-    private static func validateType(_ data: Data) throws -> UTType {
+    private func source(at url: URL, type: UTType) throws -> any AnimationSource {
+        if type.conforms(to: .movie) || Self.isVideoExtension(url.pathExtension) {
+            return try VideoSource(url: url)
+        }
+        return try GIFImporter(url: url)
+    }
+
+    private static func validateType(_ data: Data, name: String) throws -> UTType {
+        let ext = URL(fileURLWithPath: name).pathExtension
+        if Self.isVideoExtension(ext) { return UTType(filenameExtension: ext) ?? .mpeg4Movie }
+        if let video = Self.sniffVideoType(data) { return video }
         guard let source = CGImageSourceCreateWithData(data as CFData,
                 [kCGImageSourceShouldCache as String: false] as CFDictionary),
               let identifier = CGImageSourceGetType(source),
               let type = UTType(identifier as String) else {
             throw AppError(code: "E_UNSUPPORTED_TYPE", message: "Файл не является изображением.",
-                           hint: "Выберите GIF, APNG или WebP.")
-        }
-        guard type.conforms(to: .gif) || type.conforms(to: .png) || type.conforms(to: .webP) else {
-            throw AppError(code: "E_UNSUPPORTED_TYPE", message: "Тип \(type.localizedDescription ?? type.identifier) не поддерживается.",
-                           hint: "Выберите GIF, APNG или WebP, а не видео или Live Photo.")
+                           hint: "Выберите GIF, APNG, WebP, MP4, MOV или M4V.")
         }
         guard CGImageSourceGetCount(source) > 1 else {
             throw AppError(code: "E_NOT_ANIMATED", message: "В файле один кадр.",
                            hint: "Выберите анимированный GIF, APNG или WebP.")
         }
+        guard type.conforms(to: .gif) || type.conforms(to: .png) || type.conforms(to: .webP) else {
+            throw AppError(code: "E_UNSUPPORTED_TYPE", message: "Тип \(type.localizedDescription ?? type.identifier) не поддерживается.",
+                           hint: "Выберите GIF, APNG, WebP, MP4, MOV или M4V.")
+        }
         return type
     }
 
-    private static func validateType(_ url: URL) throws -> UTType {
+    private static func validateType(_ url: URL, name: String) throws -> UTType {
+        let ext = URL(fileURLWithPath: name).pathExtension
+        if Self.isVideoExtension(ext) { return UTType(filenameExtension: ext) ?? .mpeg4Movie }
+        let handle = try FileHandle(forReadingFrom: url)
+        defer { try? handle.close() }
+        if let header = try handle.read(upToCount: 12),
+           let video = Self.sniffVideoType(header) { return video }
         guard let source = CGImageSourceCreateWithURL(url as CFURL,
                 [kCGImageSourceShouldCache as String: false] as CFDictionary),
               let identifier = CGImageSourceGetType(source),
               let type = UTType(identifier as String) else {
             throw AppError(code: "E_UNSUPPORTED_TYPE", message: "Файл не является изображением.",
-                           hint: "Выберите GIF, APNG или WebP.")
-        }
-        guard type.conforms(to: .gif) || type.conforms(to: .png) || type.conforms(to: .webP) else {
-            throw AppError(code: "E_UNSUPPORTED_TYPE", message: "Формат не поддерживается.",
-                           hint: "Выберите GIF, APNG или WebP.")
+                           hint: "Выберите GIF, APNG, WebP, MP4, MOV или M4V.")
         }
         guard CGImageSourceGetCount(source) > 1 else {
             throw AppError(code: "E_NOT_ANIMATED", message: "В файле один кадр.",
                            hint: "Выберите анимированный файл.")
         }
+        guard type.conforms(to: .gif) || type.conforms(to: .png) || type.conforms(to: .webP) else {
+            throw AppError(code: "E_UNSUPPORTED_TYPE", message: "Формат не поддерживается.",
+                           hint: "Выберите GIF, APNG, WebP, MP4, MOV или M4V.")
+        }
         return type
     }
 
     private func initialSettings(id: UUID, name: String, sourceName: String,
-                                 importer: GIFImporter) throws -> EditorSettings {
+                                 importer: any AnimationSource) throws -> EditorSettings {
         var settings = EditorSettings(id: id, name: name,
                                       sourceFile: sourceName, duration: importer.totalDuration)
         let plans = try settings.availablePlans(importer: importer)
@@ -195,5 +220,25 @@ final class ProjectDocuments {
         }
         settings.selectedPlan = PlanChoice(plan)
         return settings
+    }
+
+    private static func isVideoExtension(_ ext: String) -> Bool {
+        ["mp4", "mov", "m4v"].contains(ext.lowercased())
+    }
+
+    private static func sniffVideoType(_ data: Data) -> UTType? {
+        guard data.count >= 12,
+              let atom = String(data: data.subdata(in: 4..<8), encoding: .ascii) else { return nil }
+        if atom == "ftyp" {
+            let brand = String(data: data.subdata(in: 8..<12), encoding: .ascii)
+            return brand == "qt  " ? .quickTimeMovie : .mpeg4Movie
+        }
+        return ["moov", "mdat", "wide"].contains(atom) ? .quickTimeMovie : nil
+    }
+
+    private static func sourceName(type: UTType, originalName: String) -> String {
+        let ext = URL(fileURLWithPath: originalName).pathExtension
+        if isVideoExtension(ext) { return "source.\(ext.lowercased())" }
+        return "source.\(type.preferredFilenameExtension ?? "gif")"
     }
 }

@@ -26,7 +26,7 @@ struct EditorView: View {
     let id: UUID
     let onReview: () -> Void
     @State private var settings: EditorSettings?
-    @State private var importer: GIFImporter?
+    @State private var importer: (any AnimationSource)?
     @State private var nativeInfo: String?
     @State private var plans: [AnimationPlanner.Plan] = []
     @State private var previewFrames: [UIImage] = []
@@ -525,10 +525,10 @@ struct EditorView: View {
 
     private func load() async {
         do {
-            let (value, imported, first) = try await Task.detached(priority: .utility) { () -> (EditorSettings, GIFImporter, UIImage) in
+            let (value, imported, first) = try await Task.detached(priority: .utility) { () -> (EditorSettings, any AnimationSource, UIImage) in
                 let documents = try ProjectDocuments()
                 let value = try documents.load(id)
-                let imported = try GIFImporter(url: documents.sourceURL(value))
+                let imported = try documents.source(for: value)
                 return (value, imported, UIImage(cgImage: try imported.thumbnail(at: 0, maxPixelSize: 600)))
             }.value
             settings = value; importer = imported; sourceImage = first
@@ -547,7 +547,7 @@ struct EditorView: View {
         previewWorker = Task.detached(priority: .utility) {
             do {
                 let documents = try ProjectDocuments()
-                let importer = try GIFImporter(url: documents.sourceURL(settings))
+                let importer = try documents.source(for: settings)
                 let style = try RenderPipeline.resolvedStyle(importer: importer,
                     settings: settings, plan: plan)
                 var cache: [Int: UIImage] = [:]
