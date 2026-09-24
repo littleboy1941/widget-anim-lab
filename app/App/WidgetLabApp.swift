@@ -185,8 +185,10 @@ struct ProjectListView: View {
 
     /// CI: test.gif → проект → публикация всех размеров без экранов, затем метка "ci-import-done".
     private func ciImportAndPublish() {
-        guard let url = Bundle.main.url(forResource: "test", withExtension: "gif") else {
-            ciStatus = "ci-import-failed: test.gif missing"
+        // 12 кадров по 125 мс с цветными метками номера (probe/make_frames.py) —
+        // разбор видео (probe/analyze_cells.py, режим idx) видит порядок кадров
+        guard let url = Bundle.main.url(forResource: "ci_frames", withExtension: "gif") else {
+            ciStatus = "ci-import-failed: ci_frames.gif missing"
             return
         }
         Task.detached(priority: .userInitiated) {

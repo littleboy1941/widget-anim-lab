@@ -58,7 +58,9 @@ jobs:
           # журнал диагностики из App Group и падения расширения
           GROUP=$(xcrun simctl get_app_container "$DEV" com.widgetlab.app groups 2>/dev/null | awk '/group.widgetlab.app/ {print $2}')
           echo "group container: $GROUP" | tee -a "$OUT/result.txt"
-          [ -n "$GROUP" ] && { find "$GROUP" -maxdepth 3 | head -50 > "$OUT/group_tree.txt"; find "$GROUP" -name "*.jsonl" -exec cp {} "$OUT/" \; ; }
+          [ -n "$GROUP" ] && { find "$GROUP" -maxdepth 4 | head -80 > "$OUT/group_tree.txt"; find "$GROUP" -name "*.jsonl" -exec cp {} "$OUT/" \; ; }
+          # manifest опубликованного проекта: план (fps, C, слоты), размеры, кадры
+          [ -n "$GROUP" ] && find "$GROUP" -name "manifest.json" -exec cp {} "$OUT/" \; -exec cat {} \;
           find ~/Library/Logs/DiagnosticReports -name "*WidgetLab*" -exec cp {} "$OUT/crash/" \; 2>/dev/null
           ls "$OUT" "$OUT/crash"
           xcrun simctl shutdown "$DEV" || true
