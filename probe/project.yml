@@ -39,9 +39,6 @@ targets:
         UIAppFonts:
           - WABlink2.ttf
           - WABlink3.ttf
-        - WABlink5.ttf
-        - WABlink10.ttf
-        - WABlink20.ttf
           - WABlink5.ttf
           - WABlink10.ttf
           - WABlink20.ttf
