@@ -34,7 +34,7 @@ struct AppErrorView: View {
     private func record() {
         guard loggedID != error.id else { return }
         loggedID = error.id
-        if let store = try? ProjectStore(groupIdentifier: "group.widgetlab.app") {
+        if let store = try? ProjectStore(groupIdentifier: AppGroup.identifier) {
             DiagnosticsLog(root: store.root).append(event: "app_error", projectID: nil,
                 detail: "\(error.code): \(error.message)")
         } else if let documents = try? ProjectDocuments() {
@@ -67,7 +67,7 @@ struct ProjectListView: View {
     @State private var error: AppError?
     @State private var pendingDelete: UUID?
     @State private var ciStatus: String?
-    private let groupID = "group.widgetlab.app"
+    private let groupID = AppGroup.identifier
 
     var body: some View {
         NavigationStack(path: $path) {

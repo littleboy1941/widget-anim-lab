@@ -3,7 +3,7 @@ import SwiftUI
 import WidgetKit
 
 private enum WidgetEnvironment {
-    static let groupID = "group.widgetlab.app"
+    static var groupID: String { AppGroup.identifier }
     static let kind = "WidgetLabAnimation"
 }
 

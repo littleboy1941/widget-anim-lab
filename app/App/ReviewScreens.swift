@@ -184,7 +184,7 @@ struct ReviewView: View {
                     Task { @MainActor in progress = value }
                 }
                 try Task.checkCancellation()
-                let store = try ProjectStore(groupIdentifier: "group.widgetlab.app")
+                let store = try ProjectStore(groupIdentifier: AppGroup.identifier)
                 try store.publish(draft)
                 WidgetCenter.shared.reloadAllTimelines()
                 DiagnosticsLog(root: store.root).append(event: "reload_sent", projectID: id,
@@ -225,7 +225,7 @@ struct DoneView: View {
         .background(.black)
         .navigationTitle("Готово")
         .task {
-            manifest = try? ProjectStore(groupIdentifier: "group.widgetlab.app").list().first { $0.id == id }
+            manifest = try? ProjectStore(groupIdentifier: AppGroup.identifier).list().first { $0.id == id }
         }
     }
 

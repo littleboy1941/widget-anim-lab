@@ -100,7 +100,7 @@ enum ProjectReadError: Error, Equatable {
 
     var message: String {
         switch self {
-        case .groupUnavailable: "App Group is unavailable. Check entitlements."
+        case .groupUnavailable: "App Group unavailable: (AppGroup.identifier) ((AppGroup.source))."
         case .projectDeleted: "Project deleted. Choose another animation."
         case .manifestInvalid(let reason): "Manifest invalid: \(reason)"
         case .frameFileMissing(let name): "Frame file missing: \(name)"
