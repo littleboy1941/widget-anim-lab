@@ -26,6 +26,9 @@ targets:
       - path: Shared
       - path: Fonts
       - path: Frames
+      # кадры для проверки длины анимации, генерирует CI (make_frames.py)
+      - path: LenFrames
+        optional: true
     dependencies:
       - target: FontProbeWidget
     info:
@@ -36,6 +39,12 @@ targets:
         UIAppFonts:
           - WABlink2.ttf
           - WABlink3.ttf
+        - WABlink5.ttf
+        - WABlink10.ttf
+        - WABlink20.ttf
+          - WABlink5.ttf
+          - WABlink10.ttf
+          - WABlink20.ttf
           - WAFrame0.ttf
           - WAFrame1.ttf
           - WAFrame2.ttf
@@ -66,6 +75,9 @@ targets:
       - path: Shared
       - path: Fonts
       - path: Frames
+      # кадры для проверки длины анимации, генерирует CI (make_frames.py)
+      - path: LenFrames
+        optional: true
     info:
       path: Widget/Info.plist
       properties:
@@ -77,6 +89,9 @@ targets:
         UIAppFonts:
         - WABlink2.ttf
         - WABlink3.ttf
+        - WABlink5.ttf
+        - WABlink10.ttf
+        - WABlink20.ttf
         - WAFrame0.ttf
         - WAFrame1.ttf
         - WAFrame2.ttf

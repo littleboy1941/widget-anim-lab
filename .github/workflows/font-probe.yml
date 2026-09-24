@@ -1,7 +1,7 @@
 name: Font probe
 
-# Прототип анимации на публичных API, сборка Xcode 27 (SDK 27):
-# запуск в симуляторе iOS 27 с разбором видео + IPA для телефона (SideStore).
+# Прототип анимации на публичных API, сборка Xcode 26.6 (SDK 26.5):
+# виджет на домашнем экране симулятора iOS 26.5, видео + IPA для телефона (SideStore).
 on:
   push:
     branches: [main]
@@ -9,26 +9,33 @@ on:
 
 jobs:
   probe:
-    # Два образа: на домашнем экране симулятора iOS 27 виджет оказался замороженным
-    # (не тикал даже системный таймер) — проверяем, живой ли он на iOS 26.
+    # На домашнем экране симулятора iOS 27 виджеты замороженные (не тикает даже системный
+    # таймер), на iOS 26.5 — живые. Поэтому только macos-26; задания различаются тем,
+    # что показывает первый виджет (Shared/Variant.swift): перекрытие окон и длина анимации.
     strategy:
       fail-fast: false
       matrix:
-        include:
-          - image: xcode-27
-            xcode: ""
-            name: ios27
-          - image: macos-26
-            xcode: /Applications/Xcode_26.6.app
-            name: ios26
-    runs-on: ${{ matrix.image }}
+        mode: [overlap, len12, len40, len80, len160]
+    runs-on: macos-26
+    env:
+      SKIP_APP: "1"
+      NO_ANALYZE: "1"
     timeout-minutes: 60
     steps:
       - uses: actions/checkout@v4
 
       - name: Select Xcode
-        if: matrix.xcode != ''
-        run: sudo xcode-select -s "${{ matrix.xcode }}/Contents/Developer"
+        run: sudo xcode-select -s /Applications/Xcode_26.6.app/Contents/Developer
+
+      - name: Variant and frames
+        run: |
+          cd probe
+          echo 'enum Variant { static let mode = "${{ matrix.mode }}" }' > Shared/Variant.swift
+          cat Shared/Variant.swift
+          python3 -m pip install --quiet --break-system-packages pillow
+          python3 make_frames.py --count 160 --size 150 --out LenFrames
+          for f in LenFrames/frame_*.png; do mv "$f" "LenFrames/len_${f#LenFrames/frame_}"; done
+          ls LenFrames | head -3; ls LenFrames | wc -l
 
       - name: Install XcodeGen
         run: |
@@ -54,6 +61,7 @@ jobs:
           xcrun vtool -show-build out/FontProbe.app/FontProbe | grep -E "platform|sdk"
 
       - name: Build IPA for device
+        if: matrix.mode == 'overlap'
         run: |
           cd probe
           xcodebuild -project FontProbe.xcodeproj -scheme FontProbe -configuration Release \
@@ -81,7 +89,7 @@ jobs:
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: font-probe-${{ matrix.name }}
+          name: font-probe-${{ matrix.mode }}
           path: |
             probe/out/ios*
             probe/FontProbe.ipa

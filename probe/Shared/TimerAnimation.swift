@@ -17,7 +17,7 @@ enum ProbeConfig {
     static let overlap = 0.03
 
     static let fontNames = (0..<(fontCycle * fps)).map { "WAFrame\($0)-Regular" }
-        + ["WABlink\(fontCycle)-Regular", "WABlink\(imageCycle)-Regular"]
+        + [2, 3, 5, 10, 20].map { "WABlink\($0)-Regular" }
 }
 
 /// Таймер, последний глиф которого (лигатура секунд) занимает квадрат size×size.
@@ -48,11 +48,12 @@ struct PhaseWindow: View {
     let fps: Int
     let cycle: Int
     let size: CGFloat
+    var overlap = ProbeConfig.overlap
 
     var body: some View {
         let dt = 1.0 / Double(fps)
         let font = "WABlink\(cycle)-Regular"
-        TimerGlyph(date: ref + dt * Double(phase) - ProbeConfig.overlap, font: font, size: size)
+        TimerGlyph(date: ref + dt * Double(phase) - overlap, font: font, size: size)
             .mask { TimerGlyph(date: ref + dt * Double(phase + 1) - 1, font: font, size: size) }
     }
 }
@@ -61,6 +62,7 @@ struct PhaseWindow: View {
 struct FontFramesAnimation: View {
     let ref: Date
     let size: CGFloat
+    var overlap = ProbeConfig.overlap
 
     var body: some View {
         let fps = ProbeConfig.fps
@@ -68,9 +70,12 @@ struct FontFramesAnimation: View {
         ZStack {
             ForEach(0..<phases, id: \.self) { i in
                 // глиф кадра сменяется одновременно с открытием окна
-                TimerGlyph(date: ref + Double(i) / Double(fps) - ProbeConfig.overlap,
+                TimerGlyph(date: ref + Double(i) / Double(fps) - overlap,
                            font: "WAFrame\(i)-Regular", size: size)
-                    .mask { PhaseWindow(ref: ref, phase: i, fps: fps, cycle: ProbeConfig.fontCycle, size: size) }
+                    .mask {
+                        PhaseWindow(ref: ref, phase: i, fps: fps, cycle: ProbeConfig.fontCycle,
+                                    size: size, overlap: overlap)
+                    }
             }
         }
         .frame(width: size, height: size)
@@ -83,10 +88,12 @@ struct ImageFramesAnimation: View {
     let ref: Date
     let size: CGFloat
     let frames: [UIImage]
+    var overlap = ProbeConfig.overlap
+    /// Цикл масок, с: делит 60, cycle*fps кратно числу кадров.
+    var cycle = ProbeConfig.imageCycle
 
     var body: some View {
         let fps = ProbeConfig.fps
-        let cycle = ProbeConfig.imageCycle
         let phases = cycle * fps
         ZStack {
             ForEach(0..<frames.count, id: \.self) { f in
@@ -97,7 +104,8 @@ struct ImageFramesAnimation: View {
                     .mask {
                         ZStack {
                             ForEach(Array(stride(from: f, to: phases, by: frames.count)), id: \.self) { i in
-                                PhaseWindow(ref: ref, phase: i, fps: fps, cycle: cycle, size: size)
+                                PhaseWindow(ref: ref, phase: i, fps: fps, cycle: cycle, size: size,
+                                            overlap: overlap)
                             }
                         }
                     }
@@ -109,5 +117,10 @@ struct ImageFramesAnimation: View {
 
     static func bundledFrames() -> [UIImage] {
         (0..<ProbeConfig.frameCount).compactMap { UIImage(named: "frame_\($0).png") }
+    }
+
+    /// Кадры для проверки длины анимации (make_frames.py, кладутся в LenFrames при сборке).
+    static func lengthFrames(_ count: Int) -> [UIImage] {
+        (0..<count).compactMap { UIImage(named: "len_\($0).png") }
     }
 }

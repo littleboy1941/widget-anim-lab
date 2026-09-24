@@ -4,3 +4,7 @@ probe/build_*.log
 probe/out/
 probe/Payload/
 probe/*.ipa
+probe/_tmp/
+probe/*.mp4
+probe/LenFrames/
+__pycache__/

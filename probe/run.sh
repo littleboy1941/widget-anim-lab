@@ -38,11 +38,15 @@ record() {  # $1 — имя, $2 — секунды
   wait $rec
   sleep 2  # файл дописывается после выхода
   echo "== $1 ($RTVER)" | tee -a "$OUT/result.txt"
-  swift analyze_video.swift "$OUT/$1.mp4" "$MARKERS" 2>/dev/null | tee -a "$OUT/result.txt"
+  # разбор всего экрана долгий (на домашнем экране упирался в лимит задания);
+  # клетки разбираются локально: analyze_cells.py
+  [ -n "${NO_ANALYZE:-}" ] || swift analyze_video.swift "$OUT/$1.mp4" "$MARKERS" 2>/dev/null | tee -a "$OUT/result.txt"
 }
 
 xcrun simctl install "$DEV" out/FontProbe.app
-for V in images fonts; do
+APP_VARIANTS="images fonts"
+[ -n "${SKIP_APP:-}" ] && APP_VARIANTS=""
+for V in $APP_VARIANTS; do
   xcrun simctl launch --terminate-running-process --stdout="$OUT/app_${V}_stdout.txt" \
     "$DEV" com.widgetlab.fontprobe "$V"
   sleep 4

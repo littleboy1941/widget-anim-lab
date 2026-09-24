@@ -100,12 +100,87 @@ struct DiagWidgetView: View {
     }
 }
 
+/// Двоение на смене кадра: те же анимации с разным перекрытием окон, с.
+/// На домашнем экране при 0,03 с двоение ~4 с из 20 (прогон 2026-09-23).
+struct OverlapWidgetView: View {
+    let entry: ProbeEntry
+
+    var body: some View {
+        let ref = entry.date - 60
+        let frames = ImageFramesAnimation.bundledFrames()
+        Grid(horizontalSpacing: 10, verticalSpacing: 6) {
+            GridRow {
+                ForEach([0, 0.01, 0.02], id: \.self) { ov in
+                    DiagCell(title: "B \(ov)") {
+                        ImageFramesAnimation(ref: ref, size: 80, frames: frames, overlap: ov)
+                    }
+                }
+            }
+            GridRow {
+                ForEach([0, 0.01, 0.02], id: \.self) { ov in
+                    DiagCell(title: "A \(ov)") {
+                        FontFramesAnimation(ref: ref, size: 80, overlap: ov)
+                    }
+                }
+            }
+            GridRow {
+                DiagCell(title: "timer sys") {
+                    Text(ref, style: .timer).font(.system(size: 20)).monospacedDigit()
+                }
+                DiagCell(title: "B 0.03") {
+                    ImageFramesAnimation(ref: ref, size: 80, frames: frames, overlap: 0.03)
+                }
+                DiagCell(title: "A 0.03") {
+                    FontFramesAnimation(ref: ref, size: 80, overlap: 0.03)
+                }
+            }
+        }
+        .containerBackground(.white, for: .widget)
+    }
+}
+
+/// Потолок длины: одна анимация B из N кадров 150×150, цикл масок C с, C*fps = N фаз,
+/// 2 таймера на фазу. Снизу системный таймер (виджет живой?) и число загруженных кадров.
+struct LengthWidgetView: View {
+    let entry: ProbeEntry
+    let count: Int
+
+    var body: some View {
+        let ref = entry.date - 60
+        let frames = ImageFramesAnimation.lengthFrames(count)
+        let cycle = max(1, count / ProbeConfig.fps)
+        VStack(spacing: 2) {
+            ImageFramesAnimation(ref: ref, size: 128, frames: frames, overlap: 0.02,
+                                 cycle: count == 12 ? 3 : cycle)
+            HStack(spacing: 6) {
+                Text(ref, style: .timer)
+                    .font(.system(size: 11))
+                    .monospacedDigit()
+                    .frame(width: 50, alignment: .leading)
+                Text("\(frames.count)f")
+                    .font(.system(size: 11))
+            }
+        }
+        .containerBackground(.white, for: .widget)
+    }
+}
+
 struct DiagProbeWidget: Widget {
+    private static var lengthCount: Int? {
+        Variant.mode.hasPrefix("len") ? Int(Variant.mode.dropFirst(3)) : nil
+    }
+
     var body: some WidgetConfiguration {
         StaticConfiguration(kind: "DiagProbe", provider: ProbeProvider()) { entry in
-            DiagWidgetView(entry: entry)
+            if let n = Self.lengthCount {
+                LengthWidgetView(entry: entry, count: n)
+            } else if Variant.mode == "overlap" {
+                OverlapWidgetView(entry: entry)
+            } else {
+                DiagWidgetView(entry: entry)
+            }
         }
-        .configurationDisplayName("Probe 0: diag")
-        .supportedFamilies([.systemLarge])
+        .configurationDisplayName("Probe 0: \(Variant.mode)")
+        .supportedFamilies(Self.lengthCount == nil ? [.systemLarge] : [.systemSmall])
     }
 }
