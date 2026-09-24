@@ -468,7 +468,7 @@ struct EditorView: View {
             if plan == nil { error = AppError(code: "E_PLAN_INVALID", message: "План проекта недопустим.",
                                                 hint: "Выберите план во вкладке «План».") }
             schedulePreview()
-        } catch { error = AppError.convert(error) }
+        } catch { self.error = AppError.convert(error) }
     }
 
     private func schedulePreview() {

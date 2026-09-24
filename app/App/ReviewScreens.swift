@@ -131,7 +131,7 @@ struct ReviewView: View {
                     seamDifferent = value.0 != value.1
                 }
             }
-        } catch { error = AppError.convert(error) }
+        } catch { self.error = AppError.convert(error) }
     }
 
     private func refreshPlan() {
@@ -168,7 +168,7 @@ struct ReviewView: View {
             try ProjectDocuments().save(settings)
             self.settings = settings
             refreshPlan()
-        } catch { error = AppError.convert(error) }
+        } catch { self.error = AppError.convert(error) }
     }
 
     private func publish() {

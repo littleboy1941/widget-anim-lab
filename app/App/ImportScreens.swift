@@ -165,6 +165,6 @@ struct AnalysisView: View {
                 return AnalysisInfo(importer: importer, image: UIImage(cgImage: first))
             }.value
             info = value
-        } catch { error = AppError.convert(error) }
+        } catch { self.error = AppError.convert(error) }
     }
 }
