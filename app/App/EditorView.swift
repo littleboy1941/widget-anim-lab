@@ -2,7 +2,7 @@ import SwiftUI
 import UIKit
 
 private enum EditorTool: String, CaseIterable, Identifiable {
-    case plan = "План", frames = "Кадры", crop = "Кадр.", background = "Фон"
+    case plan = "План", frames = "Кадры", crop = "Размер", background = "Фон"
     case style = "Стиль", rotate = "Поворот", color = "Цвет"
     var id: String { rawValue }
     var symbol: String {

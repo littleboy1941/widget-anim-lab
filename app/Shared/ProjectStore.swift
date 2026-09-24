@@ -126,6 +126,8 @@ final class ProjectStore {
         for url in urls {
             guard let id = UUID(uuidString: url.lastPathComponent) else { continue }
             do { projects.append(try readManifest(id)) }
+            // удалён намеренно — это не ошибка, в библиотеке не показываем
+            catch ProjectReadError.projectDeleted { continue }
             catch let failure as ProjectReadError { diagnostics[id] = failure }
             catch { diagnostics[id] = .manifestInvalid(error.localizedDescription) }
         }
