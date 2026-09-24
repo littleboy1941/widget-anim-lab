@@ -9,13 +9,26 @@ on:
 
 jobs:
   build-and-test:
-    runs-on: macos-26
+    # Две сборки: Xcode 26.6 (как раньше) и Xcode 27 — с апреля 2027 Apple требует SDK 27;
+    # публичный способ анимации от версии SDK не зависит, это подтверждает вторая сборка.
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - image: macos-26
+            xcode: /Applications/Xcode_26.6.app
+            name: xcode26
+          - image: xcode-27
+            xcode: ""
+            name: xcode27
+    runs-on: ${{ matrix.image }}
     timeout-minutes: 40
     steps:
       - uses: actions/checkout@v4
 
-      - name: Select Xcode 26.6
-        run: sudo xcode-select -s /Applications/Xcode_26.6.app/Contents/Developer
+      - name: Select Xcode
+        if: matrix.xcode != ''
+        run: sudo xcode-select -s "${{ matrix.xcode }}/Contents/Developer"
 
       - name: Install XcodeGen
         run: |
@@ -100,7 +113,7 @@ jobs:
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: app-build-and-test
+          name: app-build-and-test-${{ matrix.name }}
           path: |
             app/ci-out/build.log
             app/ci-out/test.log
