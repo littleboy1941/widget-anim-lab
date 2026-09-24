@@ -40,8 +40,8 @@ final class ImportTests: XCTestCase {
         let context = try XCTUnwrap(CGContext(data: nil, width: width, height: height,
                                                bitsPerComponent: 8, bytesPerRow: width * 4,
                                                space: colorSpace, bitmapInfo: info))
-        context.translateBy(x: 0, y: CGFloat(height))
-        context.scaleBy(x: 1, y: -1)
+        // Без переворота: в памяти CGContext первая строка — верх картинки.
+        // С переворотом тест читал кадр вверх ногами (прогон 35970950251).
         context.interpolationQuality = .none
         context.draw(image, in: CGRect(x: 0, y: 0, width: width, height: height))
         let data = try XCTUnwrap(context.data).assumingMemoryBound(to: UInt8.self)
