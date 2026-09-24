@@ -137,7 +137,7 @@ struct ReviewView: View {
     private func refreshPlan() {
         guard let settings, let importer else { return }
         do { plan = try settings.resolvedPlan(importer: importer); error = nil }
-        catch { plan = nil; error = AppError.convert(error) }
+        catch { plan = nil; self.error = AppError.convert(error) }
     }
 
     private func fixResolution(_ size: WidgetSize) {
@@ -153,7 +153,7 @@ struct ReviewView: View {
         settings.geometry[size] = geometry
         self.settings = settings
         do { try ProjectDocuments().save(settings); refreshPlan() }
-        catch { error = AppError.convert(error) }
+        catch { self.error = AppError.convert(error) }
     }
 
     private func reliablePlan() {

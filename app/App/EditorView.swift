@@ -441,7 +441,7 @@ struct EditorView: View {
         }
         settings = value
         do { try ProjectDocuments().save(value) }
-        catch { error = AppError.convert(error) }
+        catch { self.error = AppError.convert(error) }
         schedulePreview()
     }
 
