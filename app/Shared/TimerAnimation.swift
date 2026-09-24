@@ -41,17 +41,43 @@ struct ImageFramesAnimation: View {
     let reference: Date
     let variant: WidgetVariant
     let frames: [UIImage]
+    @Environment(\.displayScale) private var displayScale
+
+    /// Пиксель-арт — как в виджете Мононо: увеличение в целое число раз в ФИЗИЧЕСКИХ
+    /// пикселях (≈90 % ширины), прижато к низу. Иначе пиксели разного размера и «мыло».
+    private func pixelArtSize(in box: CGSize) -> CGSize? {
+        guard variant.pixelArt, variant.width > 0, variant.height > 0, displayScale > 0 else { return nil }
+        let byWidth = floor(box.width * displayScale * 0.9 / CGFloat(variant.width))
+        let byHeight = floor(box.height * displayScale / CGFloat(variant.height))
+        let k = min(byWidth, byHeight)
+        guard k >= 1 else { return nil }
+        return CGSize(width: CGFloat(variant.width) * k / displayScale,
+                      height: CGFloat(variant.height) * k / displayScale)
+    }
 
     var body: some View {
         GeometryReader { geometry in
             let side = max(geometry.size.width, geometry.size.height)
+            let pixelSize = pixelArtSize(in: geometry.size)
             ZStack {
                 ForEach(frames.indices, id: \.self) { index in
-                    Image(uiImage: frames[index])
-                        .resizable()
-                        .interpolation(variant.pixelArt ? .none : .high)
-                        .scaledToFit()
-                        .frame(width: geometry.size.width, height: geometry.size.height)
+                    Group {
+                        if let pixelSize {
+                            Image(uiImage: frames[index])
+                                .resizable()
+                                .interpolation(.none)
+                                .frame(width: pixelSize.width, height: pixelSize.height)
+                                .frame(width: geometry.size.width, height: geometry.size.height,
+                                       alignment: .bottom)
+                        } else {
+                            Image(uiImage: frames[index])
+                                .resizable()
+                                .interpolation(variant.pixelArt ? .none : .high)
+                                .scaledToFit()
+                                .padding(12)
+                                .frame(width: geometry.size.width, height: geometry.size.height)
+                        }
+                    }
                         .mask {
                             ZStack {
                                 ForEach(variant.phaseToFrame.indices.filter {

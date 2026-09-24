@@ -27,6 +27,7 @@ struct EditorView: View {
     let onReview: () -> Void
     @State private var settings: EditorSettings?
     @State private var importer: GIFImporter?
+    @State private var nativeInfo: String?
     @State private var plans: [AnimationPlanner.Plan] = []
     @State private var previewFrames: [UIImage] = []
     @State private var sourceImage: UIImage?
@@ -287,6 +288,11 @@ struct EditorView: View {
 
     private var cropControls: some View {
         VStack(alignment: .leading, spacing: 10) {
+            Button("Пиксели исходника (все размеры)") { useNativePixels() }
+                .buttonStyle(.bordered)
+            Text("Для пиксель-арта: родной размер спрайта, стиль «пиксель-арт»; виджет увеличит в целое число раз.")
+                .font(.caption2).foregroundStyle(.secondary)
+            if let nativeInfo { Text(nativeInfo).font(.caption.monospaced()).foregroundStyle(.green) }
             Text("Размер \(selectedSize.rawValue.uppercased()) — безопасная зона показана скруглением превью")
                 .font(.caption).foregroundStyle(.secondary)
             Picker("Кадрирование", selection: Binding(
@@ -324,6 +330,8 @@ struct EditorView: View {
 
     private var backgroundControls: some View {
         VStack(alignment: .leading, spacing: 10) {
+            Text("Без цветного фона — системное стекло iOS, как у виджета Мононо.")
+                .font(.caption2).foregroundStyle(.secondary)
             Toggle("Цветной фон", isOn: Binding(get: { settings?.background != nil },
                 set: { enabled in change { $0.background = enabled ? CanvasColor(red: 255, green: 255, blue: 255) : nil } }))
             if let color = settings?.background {
@@ -397,6 +405,29 @@ struct EditorView: View {
             Text("\(label) \(String(format: "%.2f", value))").font(.caption).frame(width: 110, alignment: .leading)
             Slider(value: Binding(get: { value }, set: update), in: range)
         }
+    }
+
+    /// Родной размер пиксель-арта: холст / k, где k — размер одноцветных блоков первого кадра.
+    private func useNativePixels() {
+        guard let importer else { return }
+        let side = max(importer.canvasWidth, importer.canvasHeight)
+        guard side > 0, let first = try? importer.thumbnail(at: 0, maxPixelSize: min(side, 2048)) else {
+            error = AppError(code: "E_READ_FAILED", message: "Не прочитан первый кадр для определения пикселей.",
+                             hint: "Попробуйте другой исходник.")
+            return
+        }
+        let k = PixelArtScale.detect(first)
+        let width = max(1, first.width / k), height = max(1, first.height / k)
+        change { settings in
+            settings.style = .pixelArt
+            for size in WidgetSize.allCases {
+                var g = settings.geometry[size] ?? OutputGeometry.initial(size)
+                g.width = width; g.height = height; g.layout = .fit
+                g.offsetX = 0; g.offsetY = 0; g.zoom = 1
+                settings.geometry[size] = g
+            }
+        }
+        nativeInfo = "Блок \(k)×\(k) → \(width)×\(height) px"
     }
 
     private func geometry(_ edit: (inout OutputGeometry) -> Void) {

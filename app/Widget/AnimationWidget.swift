@@ -117,14 +117,7 @@ struct AnimationWidgetView: View {
                                 .background(.white.opacity(0.85))
                         }
                     }
-                    .containerBackground(for: .widget) {
-                        if let bg = snapshot.variant.background {
-                            Color(red: Double(bg.red) / 255, green: Double(bg.green) / 255,
-                                  blue: Double(bg.blue) / 255)
-                        } else {
-                            Color.clear
-                        }
-                    }
+                    .modifier(WidgetBackground(color: snapshot.variant.background))
             } else {
                 VStack(alignment: .leading, spacing: 4) {
                     Text(entry.failure?.code ?? "NO_ANIMATION")
@@ -141,6 +134,21 @@ struct AnimationWidgetView: View {
     }
 }
 
+/// Без цветного фона — системное стекло тем же модификатором, что у виджета Мононо.
+private struct WidgetBackground: ViewModifier {
+    let color: CanvasColor?
+
+    func body(content: Content) -> some View {
+        if let color {
+            content.containerBackground(Color(red: Double(color.red) / 255,
+                                              green: Double(color.green) / 255,
+                                              blue: Double(color.blue) / 255), for: .widget)
+        } else {
+            content.containerBackground(.fill.tertiary, for: .widget)
+        }
+    }
+}
+
 struct AnimationWidget: Widget {
     var body: some WidgetConfiguration {
         AppIntentConfiguration(kind: WidgetEnvironment.kind,
@@ -151,6 +159,8 @@ struct AnimationWidget: Widget {
         .configurationDisplayName("Animated Widget")
         .description("Play an animation from your library.")
         .supportedFamilies([.systemSmall, .systemMedium, .systemLarge])
+        // поля убраны: пиксель-арт ставится сам (≈90 % ширины, к низу), остальное — с отступом 12
+        .contentMarginsDisabled()
     }
 }
 
