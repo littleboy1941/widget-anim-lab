@@ -275,16 +275,18 @@ final class CoreTests: XCTestCase {
             sourceCount: 20, pixelsPerFrame: 100)
         XCTAssertFalse(four.isEmpty)
         XCTAssertTrue(four.allSatisfy { $0.slotCount == 4 && $0.phaseCount % 4 == 0 })
-        let thirteen = AnimationPlanner.manualPlans(indices: Array(0..<13),
+        // 31 слот — простое число больше maxFPS (30): ни одно fps·C его не делит.
+        // (13 слотов стали допустимы с maxFPS = 30: 13 fps × C 2 = 26 фаз.)
+        let impossible = AnimationPlanner.manualPlans(indices: (0..<31).map { $0 % 20 },
             sourceCount: 20, pixelsPerFrame: 100)
-        XCTAssertTrue(thirteen.isEmpty)
+        XCTAssertTrue(impossible.isEmpty)
         let gif = try XCTUnwrap(Bundle(for: CoreTests.self).url(forResource: "test", withExtension: "gif"))
         let importer = try GIFImporter(url: gif)
         var settings = EditorSettings(id: UUID(), name: "Лента", sourceFile: "test.gif",
                                       duration: importer.totalDuration)
         let original = try XCTUnwrap(settings.availablePlans(importer: importer).first)
         settings.selectedPlan = PlanChoice(original)
-        settings.manualSlots = Array(repeating: 0, count: 13)
+        settings.manualSlots = Array(repeating: 0, count: 31)
         XCTAssertTrue(try settings.availablePlans(importer: importer).isEmpty)
         XCTAssertThrowsError(try settings.resolvedPlan(importer: importer)) {
             XCTAssertEqual(($0 as? AppError)?.code, "E_PLAN_INVALID")
