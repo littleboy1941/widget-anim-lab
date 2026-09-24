@@ -150,7 +150,7 @@ struct DevPanelView: View {
                         catch { checks[size] = AppError.convert(error).code }
                     }
                 }
-                let attributes = try? FileManager.default.attributesOfFileSystem(atPath: store.root.path)
+                let attributes = try? FileManager.default.attributesOfFileSystem(forPath: store.root.path)
                 let free = (attributes?[.systemFreeSize] as? NSNumber)?.int64Value
                 return (manifest, DiagnosticsLog(root: store.root).read(), checks, free)
             }.value

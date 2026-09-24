@@ -447,11 +447,15 @@ struct EditorView: View {
 
     private func stepFragment(_ direction: Int) {
         guard let settings, let importer else { return }
-        let frames = importer.frames
-        let current = settings.fragmentStart
-        let next = direction < 0
-            ? (frames.map(\.startTime).last { $0 < current - 0.001 } ?? 0)
-            : (frames.map(\.startTime).first { $0 > current + 0.001 } ?? current)
+        let starts: [Double] = importer.frames.map { $0.startTime }
+        let current: Double = settings.fragmentStart
+        // разбито на шаги: одним выражением компилятор не успевал вывести типы
+        let next: Double
+        if direction < 0 {
+            next = starts.last(where: { $0 < current - 0.001 }) ?? 0
+        } else {
+            next = starts.first(where: { $0 > current + 0.001 }) ?? current
+        }
         change { $0.fragmentStart = max(0, min(next, $0.fragmentEnd - 0.02)); $0.manualSlots = nil }
     }
 
