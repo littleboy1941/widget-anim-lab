@@ -173,7 +173,7 @@ struct AppError: Error, Identifiable, Equatable {
         if let read = error as? ProjectReadError {
             let message: String
             switch read {
-            case .groupUnavailable: message = "Контейнер виджета недоступен. Проверьте App Group."
+            case .groupUnavailable: message = "Контейнер App Group недоступен. \(AppGroup.diagnostics)"
             case .projectDeleted: message = "Проект удалён. Выберите другую анимацию."
             case .manifestInvalid(let reason): message = "Манифест повреждён: \(reason)"
             case .frameFileMissing(let name): message = "Отсутствует кадр \(name)."

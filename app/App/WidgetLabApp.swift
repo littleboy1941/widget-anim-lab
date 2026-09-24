@@ -24,6 +24,7 @@ struct AppErrorView: View {
         }
         .font(.system(size: 12, design: .monospaced))
         .foregroundStyle(.red)
+        .textSelection(.enabled)   // долгое нажатие — скопировать текст ошибки
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(10)
         .background(Color.red.opacity(0.1), in: RoundedRectangle(cornerRadius: 10))
