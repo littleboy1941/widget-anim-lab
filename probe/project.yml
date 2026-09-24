@@ -29,6 +29,9 @@ targets:
       # кадры для проверки длины анимации, генерирует CI (make_frames.py)
       - path: LenFrames
         optional: true
+      # кадры для замера памяти (CI, make_frames.py)
+      - path: MemFrames
+        optional: true
     dependencies:
       - target: FontProbeWidget
     info:
@@ -74,6 +77,9 @@ targets:
       - path: Frames
       # кадры для проверки длины анимации, генерирует CI (make_frames.py)
       - path: LenFrames
+        optional: true
+      # кадры для замера памяти (CI, make_frames.py)
+      - path: MemFrames
         optional: true
     info:
       path: Widget/Info.plist

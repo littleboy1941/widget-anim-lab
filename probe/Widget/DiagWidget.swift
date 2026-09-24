@@ -165,14 +165,81 @@ struct LengthWidgetView: View {
     }
 }
 
+/// Замер памяти: 40 кадров side×side px, декодированные ≈ side²·4·40 байт
+/// (300 → 14 МБ, 510 → 42, 746 → 89, 1000 → 160, 1118 → 200). Показ 300 pt.
+struct MemoryWidgetView: View {
+    let entry: ProbeEntry
+    let side: Int
+
+    var body: some View {
+        let ref = entry.date - 60
+        let frames = ImageFramesAnimation.memoryFrames(side: side)
+        let mb = Double(side * side * 4 * frames.count) / 1_048_576
+        VStack(spacing: 4) {
+            ImageFramesAnimation(ref: ref, size: 300, frames: frames, overlap: 0.02, cycle: 5)
+            HStack(spacing: 8) {
+                Text(ref, style: .timer)
+                    .font(.system(size: 13))
+                    .monospacedDigit()
+                    .frame(width: 60, alignment: .leading)
+                Text("\(frames.count)f \(side)px \(Int(mb))MB")
+                    .font(.system(size: 13))
+            }
+        }
+        .containerBackground(.white, for: .widget)
+    }
+}
+
+// Отдельные виджеты для телефона: на устройстве лимит памяти расширения настоящий,
+// в симуляторе может не соблюдаться. Названия — только литералы.
+struct Mem300Widget: Widget {
+    var body: some WidgetConfiguration {
+        StaticConfiguration(kind: "Mem300", provider: ProbeProvider()) { MemoryWidgetView(entry: $0, side: 300) }
+            .configurationDisplayName("Mem 300px 14MB").supportedFamilies([.systemLarge])
+    }
+}
+
+struct Mem510Widget: Widget {
+    var body: some WidgetConfiguration {
+        StaticConfiguration(kind: "Mem510", provider: ProbeProvider()) { MemoryWidgetView(entry: $0, side: 510) }
+            .configurationDisplayName("Mem 510px 42MB").supportedFamilies([.systemLarge])
+    }
+}
+
+struct Mem746Widget: Widget {
+    var body: some WidgetConfiguration {
+        StaticConfiguration(kind: "Mem746", provider: ProbeProvider()) { MemoryWidgetView(entry: $0, side: 746) }
+            .configurationDisplayName("Mem 746px 89MB").supportedFamilies([.systemLarge])
+    }
+}
+
+struct Mem1000Widget: Widget {
+    var body: some WidgetConfiguration {
+        StaticConfiguration(kind: "Mem1000", provider: ProbeProvider()) { MemoryWidgetView(entry: $0, side: 1000) }
+            .configurationDisplayName("Mem 1000px 160MB").supportedFamilies([.systemLarge])
+    }
+}
+
+struct Mem1118Widget: Widget {
+    var body: some WidgetConfiguration {
+        StaticConfiguration(kind: "Mem1118", provider: ProbeProvider()) { MemoryWidgetView(entry: $0, side: 1118) }
+            .configurationDisplayName("Mem 1118px 200MB").supportedFamilies([.systemLarge])
+    }
+}
+
 struct DiagProbeWidget: Widget {
     private static var lengthCount: Int? {
         Variant.mode.hasPrefix("len") ? Int(Variant.mode.dropFirst(3)) : nil
     }
+    private static var memorySide: Int? {
+        Variant.mode.hasPrefix("mem") ? Int(Variant.mode.dropFirst(3)) : nil
+    }
 
     var body: some WidgetConfiguration {
         StaticConfiguration(kind: "DiagProbe", provider: ProbeProvider()) { entry in
-            if let n = Self.lengthCount {
+            if let side = Self.memorySide {
+                MemoryWidgetView(entry: entry, side: side)
+            } else if let n = Self.lengthCount {
                 LengthWidgetView(entry: entry, count: n)
             } else if Variant.mode == "overlap" {
                 OverlapWidgetView(entry: entry)

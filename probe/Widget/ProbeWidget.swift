@@ -65,6 +65,11 @@ struct ProbeWidgetBundle: WidgetBundle {
     var body: some Widget {
         // Первым — диагностика: UI-тест в симуляторе добавляет первый виджет из галереи.
         DiagProbeWidget()
+        Mem300Widget()
+        Mem510Widget()
+        Mem746Widget()
+        Mem1000Widget()
+        Mem1118Widget()
         ImagesProbeWidget()
         FontsProbeWidget()
     }

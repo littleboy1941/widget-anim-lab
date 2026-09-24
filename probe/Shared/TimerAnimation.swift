@@ -123,4 +123,9 @@ struct ImageFramesAnimation: View {
     static func lengthFrames(_ count: Int) -> [UIImage] {
         (0..<count).compactMap { UIImage(named: "len_\($0).png") }
     }
+
+    /// Кадры для замера памяти: 40 штук side×side (make_frames.py, MemFrames).
+    static func memoryFrames(side: Int) -> [UIImage] {
+        (0..<40).compactMap { UIImage(named: "mem\(side)_\($0).png") }
+    }
 }

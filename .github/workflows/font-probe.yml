@@ -16,7 +16,8 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        mode: [overlap, len12, len40, len80, len160]
+        # замер памяти расширения: 40 кадров side×side (14…200 МБ декодированных)
+        mode: [mem300, mem510, mem746, mem1000, mem1118]
     runs-on: macos-26
     env:
       SKIP_APP: "1"
@@ -37,6 +38,12 @@ jobs:
           python3 make_frames.py --count 160 --size 150 --out LenFrames
           for f in LenFrames/frame_*.png; do mv "$f" "LenFrames/len_${f#LenFrames/frame_}"; done
           ls LenFrames | head -3; ls LenFrames | wc -l
+          mkdir -p MemFrames
+          for side in 300 510 746 1000 1118; do
+            python3 make_frames.py --count 40 --size $side --out mf_tmp
+            for f in mf_tmp/frame_*.png; do mv "$f" "MemFrames/mem${side}_${f#mf_tmp/frame_}"; done
+          done
+          ls MemFrames | wc -l; du -sh MemFrames
 
       - name: Install XcodeGen
         run: |
@@ -62,7 +69,7 @@ jobs:
           xcrun vtool -show-build out/FontProbe.app/FontProbe | grep -E "platform|sdk"
 
       - name: Build IPA for device
-        if: matrix.mode == 'overlap'
+        if: matrix.mode == 'mem300'
         run: |
           cd probe
           xcodebuild -project FontProbe.xcodeproj -scheme FontProbe -configuration Release \
