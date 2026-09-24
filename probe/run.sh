@@ -55,6 +55,14 @@ for V in $APP_VARIANTS; do
   xcrun simctl terminate "$DEV" com.widgetlab.fontprobe || true
 done
 
+if [ -n "${SKIP_APP:-}" ]; then
+  # Без предварительного запуска приложения виджета не было в галерее (прогон 35969981596,
+  # «No Results»): система не успевает зарегистрировать расширение. Запускаем и ждём.
+  xcrun simctl launch "$DEV" com.widgetlab.fontprobe images > /dev/null
+  sleep 20
+  xcrun simctl terminate "$DEV" com.widgetlab.fontprobe || true
+  sleep 5
+fi
 echo "== UI-тест: ставим виджет на домашний экран"
 xcodebuild test -project FontProbe.xcodeproj -scheme FontProbe -destination "id=$DEV" \
   -derivedDataPath build_test CODE_SIGN_IDENTITY=- CODE_SIGNING_ALLOWED=YES CODE_SIGNING_REQUIRED=NO \
@@ -65,4 +73,9 @@ xcrun simctl terminate "$DEV" com.widgetlab.fontprobe 2>/dev/null || true
 # даём системе время заменить заглушку живым виджетом
 sleep 60
 record "home_widget" 20
+# падения расширения и его сообщения — если виджета нет в галерее или он пустой
+mkdir -p "$OUT/crash"
+find ~/Library/Logs/DiagnosticReports -name "*FontProbe*" -exec cp {} "$OUT/crash/" \; 2>/dev/null
+timeout 180 xcrun simctl spawn "$DEV" log show --last 10m --style compact   --predicate 'process CONTAINS "FontProbe" OR eventMessage CONTAINS "fontprobe"'   > "$OUT/widget_log.txt" 2>&1 || true
+wc -l "$OUT/widget_log.txt"; ls "$OUT/crash"
 xcrun simctl shutdown "$DEV" || true
