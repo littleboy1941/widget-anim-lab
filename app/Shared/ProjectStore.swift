@@ -223,7 +223,7 @@ final class ProjectStore {
               variant.phaseToFrame.count == variant.phaseCount,
               variant.phaseToFrame.allSatisfy({ variant.frames.indices.contains($0) }),
               variant.overlapSeconds.isFinite,
-              variant.overlapSeconds == budget.overlapSeconds else {
+              variant.overlapSeconds == budget.overlap(forFPS: variant.fps) else {
             throw ProjectReadError.manifestInvalid("invalid fps, cycle, phase table, or overlap")
         }
         for (index, frame) in variant.frames.enumerated() {

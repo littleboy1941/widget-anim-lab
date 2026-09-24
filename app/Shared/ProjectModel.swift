@@ -13,8 +13,17 @@ struct AnimationBudget: Codable, Equatable {
     var maxDecodedBytes = 16 * 1_048_576
     var maxPNGBytes = 4 * 1_048_576
     var minFPS = 4
-    var maxFPS = 12
+    /// До 30 fps: в стенде 16 fps — 100 % по порядку, 24–30 fps — 98 % (симулятор, 2026-09-25).
+    var maxFPS = 30
     var overlapSeconds = 0.02
+
+    /// Перекрытие окон по частоте (замеры 2026-09-25): при высоком fps окно короче
+    /// (33–62 мс), и 0,02 с даёт заметное двоение.
+    func overlap(forFPS fps: Int) -> Double {
+        if fps <= 12 { return overlapSeconds }
+        if fps <= 24 { return 0.01 }
+        return 0
+    }
     var maxLogBytes = 256 * 1024
 
     static let standard = AnimationBudget()

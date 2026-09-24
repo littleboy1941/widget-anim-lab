@@ -36,7 +36,7 @@ final class CoreTests: XCTestCase {
                                                    pixelsPerFrame: 4)
         XCTAssertFalse(plans.isEmpty)
         for plan in plans {
-            XCTAssertTrue((4...12).contains(plan.fps))
+            XCTAssertTrue((AnimationBudget.standard.minFPS...AnimationBudget.standard.maxFPS).contains(plan.fps))
             XCTAssertEqual(60 % plan.cycle, 0)
             XCTAssertLessThanOrEqual(plan.phaseCount, AnimationBudget.standard.maxPhases)
             XCTAssertEqual(plan.phaseCount % plan.slotCount, 0)

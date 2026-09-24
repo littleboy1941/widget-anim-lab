@@ -70,7 +70,7 @@ enum RenderPipeline {
             guard let geometry = settings.geometry[size] else { continue }
             variants[size] = VariantDraft(width: geometry.width, height: geometry.height,
                 fps: plan.fps, cycle: plan.cycle, slotCount: plan.slotCount,
-                phaseToFrame: plan.phaseToFrame, overlapSeconds: budget.overlapSeconds,
+                phaseToFrame: plan.phaseToFrame, overlapSeconds: budget.overlap(forFPS: plan.fps),
                 background: settings.background, pixelArt: style == .pixelArt,
                 pngData: png)
         }
