@@ -6,8 +6,10 @@ enum WidgetSize: String, Codable, CaseIterable, Hashable {
 
 /// Conservative product limits. Recheck all pixel and memory limits with device measurements.
 struct AnimationBudget: Codable, Equatable {
-    /// 160 фаз = 20 с при 8 fps; проверено в стенде со стопками по 40 кадров (2026-09-24).
-    var maxPhases = 160
+    /// Потолок — ~160 слоёв-кадров на виджет (стенд, стопки по 40, 2026-09-24/25; 240 ломаются).
+    /// Запасной слой (TimerAnimation) добавляет до половины слоёв: 106 фаз × 1,5 ≈ 159.
+    /// 106 фаз = 13 с при 8 fps, 3,5 с при 30 fps.
+    var maxPhases = 106
     var maxPixels: [WidgetSize: Int] = [.small: 90_000, .medium: 120_000, .large: 160_000]
     // TODO: Measure peak widget RSS/jetsam on a real iPhone before revising this budget.
     var maxDecodedBytes = 16 * 1_048_576

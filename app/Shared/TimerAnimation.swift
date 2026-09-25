@@ -1,5 +1,6 @@
 import SwiftUI
 import UIKit
+import WidgetKit
 
 /// Keep this exact timer layout: .fixedSize() made the home-screen widget blank.
 struct TimerGlyph: View {
@@ -68,6 +69,7 @@ struct WidgetFramePlacement: View {
                     Image(uiImage: image)
                                 .resizable()
                                 .interpolation(.none)
+                                .widgetAccentedRenderingMode(.fullColor)
                                 .frame(width: pixelSize.width, height: pixelSize.height)
                                 .frame(width: geometry.size.width, height: geometry.size.height,
                                        alignment: .bottom)
@@ -75,6 +77,7 @@ struct WidgetFramePlacement: View {
                     Image(uiImage: image)
                                 .resizable()
                                 .interpolation(pixelArt ? .none : .high)
+                                .widgetAccentedRenderingMode(.fullColor)
                                 .scaledToFit()
                                 .padding(12)
                                 .frame(width: geometry.size.width, height: geometry.size.height)
@@ -89,15 +92,12 @@ struct ImageFramesAnimation: View {
     let reference: Date
     let variant: WidgetVariant
     let frames: [UIImage]
-    /// Опыт 2026-09-25: на iPhone 12 после возврата из приложения все маски на 17–50 мс
-    /// закрыты — виджет вспыхивает пустым. Кадр 0 без маски под стопкой заменяет вспышку
-    /// кадром. Годится только для непрозрачных кадров: сквозь прозрачные он виден всегда.
-    var underlay = false
-    /// Опыт 2026-09-25: с подложкой вспышка пропала, но шарик «телепортируется» в кадр 0.
     /// Запасной слой — копия анимации под основной с широкими окнами (каждая 2-я фаза,
-    /// окно 2 фазы + по полфазы запаса): при сбое основного слоя виден почти текущий кадр.
-    /// Если и он гаснет — сбой гасит все таймеры разом. Слоёв +≈50 %.
-    var fallback = false
+    /// окно 2 фазы + по полфазы запаса). На телефоне (iPhone 12 / iOS 27, 17 Pro Max / iOS 26,
+    /// 2026-09-25) все маски основного слоя изредка на 17–50 мс закрыты — без него виджет
+    /// вспыхивает пустым. Кадр 0 без маски вместо него давал «телепорт». Слоёв +≈50 %
+    /// (учтено в AnimationBudget.maxPhases).
+    var fallback = true
 
     struct Window: Hashable {
         let phase: Int
@@ -127,11 +127,6 @@ struct ImageFramesAnimation: View {
         GeometryReader { geometry in
             let side = max(geometry.size.width, geometry.size.height)
             ZStack {
-                if underlay, let first = frames.first {
-                    WidgetFramePlacement(image: first, width: variant.width,
-                                         height: variant.height, pixelArt: variant.pixelArt)
-                        .frame(width: geometry.size.width, height: geometry.size.height)
-                }
                 if fallback {
                     stacks(fallbackWindows, size: geometry.size, side: side)
                 }
