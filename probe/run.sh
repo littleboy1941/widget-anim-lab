@@ -70,7 +70,10 @@ if [ -n "${SKIP_APP:-}" ]; then
   sleep 5
 fi
 echo "== UI-тест: ставим виджет на домашний экран"
-xcodebuild test -project FontProbe.xcodeproj -scheme FontProbe -destination "id=$DEV" \
+# В опыте со свайпом (SWIPE_TEST) второй тест, testSwipes, идёт позже — под запись.
+ONLY_ADD=()
+[ -n "${SWIPE_TEST:-}" ] && ONLY_ADD=(-only-testing:FontProbeUITests/AddWidgetUITests/testAddImagesWidget)
+xcodebuild test -project FontProbe.xcodeproj -scheme FontProbe -destination "id=$DEV" ${ONLY_ADD[@]+"${ONLY_ADD[@]}"} \
   -derivedDataPath build_test CODE_SIGN_IDENTITY=- CODE_SIGNING_ALLOWED=YES CODE_SIGNING_REQUIRED=NO \
   SWIFT_ACTIVE_COMPILATION_CONDITIONS="${PROBE_SWIFT_FLAGS:-}" \
   > "$OUT/uitest.log" 2>&1
@@ -79,8 +82,24 @@ grep -E "Test Case|error|failed|passed" "$OUT/uitest.log" | tail -20
 xcrun simctl terminate "$DEV" com.widgetlab.fontprobe 2>/dev/null || true
 # даём системе время заменить заглушку живым виджетом
 sleep 60
-# Длительность записи задаёт RECORD_SECONDS (в deep-серии 30 с).
-record "home_widget" "${RECORD_SECONDS:-25}"
+if [ -n "${SWIPE_TEST:-}" ]; then
+  # запись идёт, пока UI-тест свайпает страницы и уходит в «Настройки» и обратно
+  xcrun simctl io "$DEV" screenshot "$OUT/home_swipe.png"
+  xcrun simctl io "$DEV" recordVideo --codec=h264 --force "$OUT/home_swipe.mp4" > "$OUT/home_swipe_rec.txt" 2>&1 &
+  REC=$!
+  for _ in $(seq 1 20); do grep -q "Recording started" "$OUT/home_swipe_rec.txt" && break; sleep 0.5; done
+  sleep 5
+  xcodebuild test-without-building -project FontProbe.xcodeproj -scheme FontProbe -destination "id=$DEV"     -derivedDataPath build_test -only-testing:FontProbeUITests/AddWidgetUITests/testSwipes     > "$OUT/uitest_swipes.log" 2>&1
+  echo "UI-тест свайпов: код $?" | tee -a "$OUT/result.txt"
+  grep -E "Test Case|error|failed|passed" "$OUT/uitest_swipes.log" | tail -10
+  sleep 5
+  kill -INT $REC
+  wait $REC
+  sleep 2
+else
+  # Длительность записи задаёт RECORD_SECONDS (в deep-серии 30 с).
+  record "home_widget" "${RECORD_SECONDS:-25}"
+fi
 # падения расширения и его сообщения — если виджета нет в галерее или он пустой
 mkdir -p "$OUT/crash"
 find ~/Library/Logs/DiagnosticReports -name "*FontProbe*" -exec cp {} "$OUT/crash/" \; 2>/dev/null

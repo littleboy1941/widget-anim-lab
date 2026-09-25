@@ -63,7 +63,9 @@ struct ImagesProbeWidget: Widget {
 @main
 struct ProbeWidgetBundle: WidgetBundle {
     var body: some Widget {
-        #if DEEP_EXPERIMENTS
+        #if SWIPE_EXPERIMENTS
+        SwipeProbeWidget()
+        #elseif DEEP_EXPERIMENTS
         DeepSelectorWidget()
         Deep240SmallWidget()
         Deep480SmallWidget()

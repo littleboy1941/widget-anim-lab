@@ -52,6 +52,27 @@ final class AddWidgetUITests: XCTestCase {
         print("== итог\n" + springboard.debugDescription)
     }
 
+    /// Опыт со свайпом (SWIPE_EXPERIMENTS): run.sh пишет видео, пока идёт этот тест.
+    /// Переходы домашнего экрана: 3 раза страница влево и обратно, 3 раза «Настройки» → домой.
+    /// Паузы по 3 с — чтобы между переходами был виден покой.
+    func testSwipes() throws {
+        XCUIDevice.shared.press(.home)
+        sleep(3)
+        for _ in 0..<3 {
+            springboard.swipeLeft()
+            sleep(3)
+            springboard.swipeRight()
+            sleep(3)
+        }
+        let settings = XCUIApplication(bundleIdentifier: "com.apple.Preferences")
+        for _ in 0..<3 {
+            settings.activate()
+            sleep(3)
+            XCUIDevice.shared.press(.home)
+            sleep(3)
+        }
+    }
+
     /// Долгое нажатие на домашний экран. Если попали в иконку — пункт «Edit Home Screen».
     private func enterEditMode() {
         springboard.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.72))

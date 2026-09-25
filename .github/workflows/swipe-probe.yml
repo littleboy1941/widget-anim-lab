@@ -1,0 +1,66 @@
+name: Swipe probe
+
+# Замирает ли анимация во время перехода домашнего экрана (свайп страницы, возврат из
+# приложения)? Большой виджет probe/Widget/SwipeWidget.swift: таймеры-маски 16 fps,
+# Text(stopwatch), полосы ProgressView(timerInterval:). Запись идёт одновременно с UI-тестом
+# testSwipes. Симулятор iOS 26.5 (на iOS 27 виджеты в симуляторе заморожены).
+on:
+  workflow_dispatch:
+
+jobs:
+  probe:
+    runs-on: macos-26
+    env:
+      SKIP_APP: "1"
+      NO_ANALYZE: "1"
+      SWIPE_TEST: "1"
+      PROBE_SWIFT_FLAGS: SWIPE_EXPERIMENTS
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Select Xcode
+        run: sudo xcode-select -s /Applications/Xcode_26.6.app/Contents/Developer
+
+      - name: Frames
+        run: |
+          cd probe
+          python3 -m pip install --quiet --break-system-packages pillow
+          python3 prepare_swipe.py
+
+      - name: Install XcodeGen
+        run: |
+          curl -sL -o xcodegen.zip https://github.com/yonaskolb/XcodeGen/releases/latest/download/xcodegen.zip
+          unzip -q xcodegen.zip -d xcodegen
+          echo "$PWD/xcodegen/xcodegen/bin" >> "$GITHUB_PATH"
+
+      - name: Generate project
+        run: |
+          xcodebuild -version
+          cd probe && xcodegen generate
+
+      - name: Build for simulator
+        run: |
+          cd probe
+          xcodebuild -project FontProbe.xcodeproj -scheme FontProbe -configuration Release \
+            -sdk iphonesimulator -destination 'generic/platform=iOS Simulator' \
+            -derivedDataPath build_sim CODE_SIGNING_ALLOWED=NO \
+            SWIFT_ACTIVE_COMPILATION_CONDITIONS=SWIPE_EXPERIMENTS build > build_sim.log 2>&1 \
+            || { grep -E "error:" build_sim.log | head -40; tail -40 build_sim.log; exit 1; }
+          mkdir -p out
+          cp -R build_sim/Build/Products/Release-iphonesimulator/FontProbe.app out/
+          codesign -f -s - --deep out/FontProbe.app
+
+      - name: Ensure iOS simulator runtime
+        run: xcrun simctl list runtimes | grep -q "iOS" || xcodebuild -downloadPlatform iOS
+
+      - name: Run in simulator
+        run: RUNTIME_PREFIX="26." bash probe/run.sh "0,0,0"
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: swipe-probe
+          path: |
+            probe/out/ios*
+            probe/build_*.log

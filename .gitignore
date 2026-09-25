@@ -16,3 +16,4 @@ probe/MemFrames/
 app/Payload/
 app/StressFixtures/
 app/Tests/StressFixtures/
+probe/RateFrames/
