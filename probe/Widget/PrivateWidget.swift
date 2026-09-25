@@ -227,7 +227,14 @@ struct ComboSingleView: View {
 struct PrivateProbeWidget: Widget {
     var body: some WidgetConfiguration {
         StaticConfiguration(kind: "PrivateProbe", provider: SwipeProvider()) { entry in
-            if Variant.mode == "mix" {
+            if Variant.mode == "timers30" {
+                // контроль: только таймеры 30 fps в сборке Xcode 26.0.1 (mix и комбо не рисовались)
+                ImageFramesAnimation(ref: entry.date - 60, size: 150,
+                                     frames: ImageFramesAnimation.experimentFrames(30, prefix: "fps30"),
+                                     overlap: 0, cycle: 2, fps: 30)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .containerBackground(.white, for: .widget)
+            } else if Variant.mode == "mix" {
                 // таймеры и вращение рядом, без вложения: рисует ли система вообще такое сочетание
                 HStack(spacing: 12) {
                     ImageFramesAnimation(ref: entry.date - 60, size: 150,
