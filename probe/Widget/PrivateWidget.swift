@@ -224,9 +224,25 @@ struct ComboSingleView: View {
     }
 }
 
+/// Одна запись (policy .never). SwipeProvider даёт 30 записей (по минуте) — архив таймлайна
+/// с 30 копиями вида и кадров вышел 11 МБ, chronod отбросил его («too large timeline archive
+/// 11042328», прогон 36168304293) и показывал заглушку. Опорная дата — целая минута.
+struct OneEntryProvider: TimelineProvider {
+    func placeholder(in context: Context) -> SwipeEntry { SwipeEntry(date: .now) }
+
+    func getSnapshot(in context: Context, completion: @escaping (SwipeEntry) -> Void) {
+        completion(SwipeEntry(date: .now))
+    }
+
+    func getTimeline(in context: Context, completion: @escaping (Timeline<SwipeEntry>) -> Void) {
+        let minute = Calendar.current.dateInterval(of: .minute, for: .now)?.start ?? .now
+        completion(Timeline(entries: [SwipeEntry(date: minute)], policy: .never))
+    }
+}
+
 struct PrivateProbeWidget: Widget {
     var body: some WidgetConfiguration {
-        StaticConfiguration(kind: "PrivateProbe", provider: SwipeProvider()) { entry in
+        StaticConfiguration(kind: "PrivateProbe", provider: OneEntryProvider()) { entry in
             if Variant.mode == "timers30" {
                 // контроль: только таймеры 30 fps в сборке Xcode 26.0.1 (mix и комбо не рисовались)
                 ImageFramesAnimation(ref: entry.date - 60, size: 150,
