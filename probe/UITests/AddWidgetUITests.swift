@@ -57,7 +57,8 @@ final class AddWidgetUITests: XCTestCase {
     /// Паузы по 3 с — чтобы между переходами был виден покой.
     func testSwipes() throws {
         XCUIDevice.shared.press(.home)
-        sleep(3)
+        // после переустановки приложения (REPLACE_APP) виджет перерисовывается не сразу
+        sleep(10)
         for _ in 0..<3 {
             springboard.swipeLeft()
             sleep(3)

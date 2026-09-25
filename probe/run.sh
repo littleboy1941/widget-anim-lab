@@ -80,6 +80,15 @@ xcodebuild test -project FontProbe.xcodeproj -scheme FontProbe -destination "id=
 echo "UI-тест: код $?" | tee -a "$OUT/result.txt"
 grep -E "Test Case|error|failed|passed" "$OUT/uitest.log" | tail -20
 xcrun simctl terminate "$DEV" com.widgetlab.fontprobe 2>/dev/null || true
+if [ -n "${REPLACE_APP:-}" ]; then
+  # Опыт с приватным эффектом: UI-тест собирает приложение своим Xcode (SDK новее 26.0,
+  # эффект там не работает). Подменяем его сборкой Xcode 26.0.1 — и в симуляторе, и в
+  # продуктах теста: test-without-building ниже ставит приложение оттуда.
+  TP=build_test/Build/Products/Debug-iphonesimulator/FontProbe.app
+  rm -rf "$TP" && cp -R "$REPLACE_APP" "$TP" && codesign -f -s - --deep "$TP"
+  xcrun simctl install "$DEV" "$TP"
+  xcrun vtool -show-build "$TP/PlugIns/FontProbeWidget.appex/FontProbeWidget" | grep -E "sdk" | tee -a "$OUT/result.txt"
+fi
 # даём системе время заменить заглушку живым виджетом
 sleep 60
 if [ -n "${SWIPE_TEST:-}" ]; then

@@ -17,3 +17,5 @@ app/Payload/
 app/StressFixtures/
 app/Tests/StressFixtures/
 probe/RateFrames/
+probe/Frameworks/
+probe/chrk/
