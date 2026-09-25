@@ -28,6 +28,10 @@ struct RotationFramesAnimation: View {
     let size: CGFloat
     var radiusMultiplier: CGFloat = 50
     var groupSize: Int = 0
+    /// Сдвиг дуг, градусы. Геометрия (гипотеза, проверяет опыт combo): вращение θ = 360°·frac(t/T)
+    /// по часам, видна точка круга «вверху», поэтому без сдвига кадр i виден при
+    /// t·fps ≡ i − N/4 (mod N); сдвиг −90° совмещает кадр i с t·fps ∈ [i, i+1), как у таймеров.
+    var shift: Double = 0
 
     private func frameLayer(_ index: Int, radius: CGFloat, angle: Double,
                             period: Double) -> some View {
@@ -35,8 +39,8 @@ struct RotationFramesAnimation: View {
             .resizable()
             .frame(width: size, height: size)
             .mask(
-                ArcSliceMask(startAngle: -angle * Double(index + 1),
-                             endAngle: -angle * Double(index), radius: radius)
+                ArcSliceMask(startAngle: shift - angle * Double(index + 1),
+                             endAngle: shift - angle * Double(index), radius: radius)
                     .stroke(Color.white,
                             style: StrokeStyle(lineWidth: size * 1.5, lineCap: .butt),
                             antialiased: false)
@@ -132,10 +136,84 @@ struct PrivateExperimentView: View {
     }
 }
 
+/// Гибрид «таймеры сверху, вращение снизу» (опыт 2026-09-25). Верхний слой — таймеры-маски
+/// (до 30 fps в покое), каждый кадр дополнительно под вращающимися «воротами», открытыми
+/// в его слот ± margin кадров. При свайпе таймеры замирают, ворота закрывают застывший кадр,
+/// и виден нижний слой — вращение (~12,5 обновлений/с, живёт при свайпе).
+struct GatedTimerFramesAnimation: View {
+    let ref: Date
+    let frames: [UIImage]
+    let fps: Int
+    let size: CGFloat
+    let shift: Double
+    var margin = 2.5
+
+    var body: some View {
+        let count = frames.count
+        let cycle = 2
+        let phases = cycle * fps
+        let radius = size * 50
+        let angle = 360.0 / Double(max(1, count))
+        let period = Double(count) / Double(fps)
+        ZStack {
+            RotationFramesAnimation(frames: frames, fps: fps, size: size, shift: shift)
+            ForEach(0..<count, id: \.self) { j in
+                Image(uiImage: frames[j])
+                    .resizable()
+                    .frame(width: size, height: size)
+                    .mask {
+                        ZStack {
+                            ForEach(Array(stride(from: j, to: phases, by: count)), id: \.self) { p in
+                                PhaseWindow(ref: ref, phase: p, fps: fps, cycle: cycle, size: size, overlap: 0)
+                            }
+                        }
+                    }
+                    .mask(
+                        ArcSliceMask(startAngle: shift - angle * (Double(j) + 1 + margin),
+                                     endAngle: shift - angle * (Double(j) - margin), radius: radius)
+                            .stroke(Color.white,
+                                    style: StrokeStyle(lineWidth: size * 1.5, lineCap: .butt),
+                                    antialiased: false)
+                            .frame(width: size, height: size)
+                            .clockHandRotationEffect(period: .custom(period))
+                            .offset(y: radius)
+                    )
+            }
+        }
+        .frame(width: size, height: size)
+        .clipped()
+    }
+}
+
+/// Четыре клетки 30 fps × 30 кадров, петля 1 с: только таймеры | только вращение (без сдвига)
+/// комбо со сдвигом −90° | комбо без сдвига. Опорная дата таймеров — целая минута.
+struct ComboExperimentView: View {
+    let entry: SwipeEntry
+
+    var body: some View {
+        let ref = entry.date - 60
+        let frames = ImageFramesAnimation.experimentFrames(30, prefix: "fps30")
+        VStack(spacing: 12) {
+            HStack(spacing: 12) {
+                ImageFramesAnimation(ref: ref, size: 150, frames: frames, overlap: 0, cycle: 2, fps: 30)
+                RotationFramesAnimation(frames: frames, fps: 30, size: 150)
+            }
+            HStack(spacing: 12) {
+                GatedTimerFramesAnimation(ref: ref, frames: frames, fps: 30, size: 150, shift: -90)
+                GatedTimerFramesAnimation(ref: ref, frames: frames, fps: 30, size: 150, shift: 0)
+            }
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .containerBackground(.white, for: .widget)
+    }
+}
+
 struct PrivateProbeWidget: Widget {
     var body: some WidgetConfiguration {
         StaticConfiguration(kind: "PrivateProbe", provider: SwipeProvider()) {
-            if let mode = CapacityMode(Variant.mode) {
+            if Variant.mode == "combo" {
+                ComboExperimentView(entry: $0)
+            } else if let mode = CapacityMode(Variant.mode) {
                 PrivateCapacityView(mode: mode)
             } else {
                 PrivateExperimentView(entry: $0)

@@ -6,6 +6,10 @@ name: Private probe
 # приложение собирается Xcode 26.0.1 и подменяет сборку UI-теста (run.sh, REPLACE_APP).
 on:
   workflow_dispatch:
+    inputs:
+      mode:
+        description: "Variant.mode: пусто — 16/30 fps; combo — таймеры + вращение"
+        default: ""
 
 jobs:
   probe:
@@ -25,6 +29,10 @@ jobs:
           cd probe
           python3 -m pip install --quiet --break-system-packages pillow
           python3 prepare_swipe.py
+          if [ -n "${{ inputs.mode }}" ]; then
+            echo 'enum Variant { static let mode = "${{ inputs.mode }}" }' > Shared/Variant.swift
+          fi
+          cat Shared/Variant.swift
 
       - name: Install XcodeGen
         run: |
