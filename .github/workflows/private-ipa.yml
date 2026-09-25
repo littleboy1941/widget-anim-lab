@@ -1,0 +1,99 @@
+name: Private probe IPA
+
+# IPA стенда для телефона (SideStore): виджет «Probe 0» на приватном _clockHandRotationEffect,
+# две клетки 16 и 30 fps с idx-метками (probe/Widget/PrivateWidget.swift). Вопрос: есть ли
+# на телефоне потолок ~12,5 смены картинки в секунду, как в симуляторе (прогон 36155952480).
+# Сборка Xcode 26.0.1 (SDK 26.0) — иначе эффект не работает.
+on:
+  workflow_dispatch:
+
+jobs:
+  ipa:
+    runs-on: macos-26
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Frames
+        run: |
+          cd probe
+          python3 -m pip install --quiet --break-system-packages pillow
+          python3 prepare_swipe.py
+
+      - name: Install XcodeGen
+        run: |
+          curl -sL -o xcodegen.zip https://github.com/yonaskolb/XcodeGen/releases/latest/download/xcodegen.zip
+          unzip -q xcodegen.zip -d xcodegen
+          echo "$PWD/xcodegen/xcodegen/bin" >> "$GITHUB_PATH"
+
+      - name: ClockHandRotationKit for device
+        run: |
+          cd probe
+          rm -rf chrk Frameworks
+          git clone -q --depth 1 --branch 1.1.0 https://github.com/octree/ClockHandRotationKit chrk
+          mkdir -p Frameworks
+          cp -R chrk/ClockHandRotationKit.xcframework/ios-arm64/ClockHandRotationKit.framework Frameworks/
+          xcrun vtool -show-build Frameworks/ClockHandRotationKit.framework/ClockHandRotationKit | grep -E "platform|sdk"
+
+      - name: Link ClockHandRotationKit
+        run: |
+          cd probe
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path("project.yml")
+          t = p.read_text()
+          def rep(old, new):
+              global t
+              assert t.count(old) == 1, old
+              t = t.replace(old, new)
+          fw = "      - framework: Frameworks/ClockHandRotationKit.framework\n"
+          rep('    SWIFT_VERSION: "5.0"\n',
+              '    SWIFT_VERSION: "5.0"\n    FRAMEWORK_SEARCH_PATHS: $(PROJECT_DIR)/Frameworks\n')
+          rep("    dependencies:\n      - target: FontProbeWidget\n",
+              "    dependencies:\n      - target: FontProbeWidget\n" + fw + "        embed: true\n")
+          rep("  FontProbeWidget:\n    type: app-extension\n",
+              "  FontProbeWidget:\n    type: app-extension\n    dependencies:\n" + fw + "        embed: false\n")
+          p.write_text(t)
+          PY
+          xcodegen generate
+
+      - name: Build IPA with Xcode 26.0.1 (SDK 26.0)
+        run: |
+          cd probe
+          export DEVELOPER_DIR=/Applications/Xcode_26.0.1.app/Contents/Developer
+          xcodebuild -version
+          build() {
+            xcodebuild -project FontProbe.xcodeproj -scheme FontProbe -configuration Release \
+              -sdk iphoneos -destination 'generic/platform=iOS' -derivedDataPath build_dev \
+              ARCHS=arm64 CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" \
+              SWIFT_ACTIVE_COMPILATION_CONDITIONS=PRIVATE_EXPERIMENTS build > build_dev.log 2>&1
+          }
+          if ! build; then
+            if grep -qE "no destinations|is not installed" build_dev.log; then
+              xcodebuild -downloadPlatform iOS
+              build || { grep -E "error:" build_dev.log | head -40; tail -40 build_dev.log; exit 1; }
+            else
+              grep -E "error:" build_dev.log | head -40; tail -40 build_dev.log; exit 1
+            fi
+          fi
+          rm -rf Payload && mkdir Payload
+          cp -R build_dev/Build/Products/Release-iphoneos/FontProbe.app Payload/
+          FW=Payload/FontProbe.app/Frameworks/ClockHandRotationKit.framework
+          # виджет грузит фреймворк через @executable_path/../../Frameworks (HOME_WIDGET_GUIDE.md)
+          test -f "$FW/ClockHandRotationKit" || { mkdir -p Payload/FontProbe.app/Frameworks; cp -R Frameworks/ClockHandRotationKit.framework Payload/FontProbe.app/Frameworks/; }
+          rm -rf "$FW/Headers" "$FW/Modules"
+          codesign -f -s - "$FW"
+          codesign -f -s - Payload/FontProbe.app/PlugIns/FontProbeWidget.appex
+          codesign -f -s - Payload/FontProbe.app
+          xcrun vtool -show-build Payload/FontProbe.app/PlugIns/FontProbeWidget.appex/FontProbeWidget | grep -E "platform|sdk"
+          otool -L Payload/FontProbe.app/PlugIns/FontProbeWidget.appex/FontProbeWidget | grep -i clockhand
+          ls Payload/FontProbe.app/Frameworks
+          zip -qry FontProbe_private.ipa Payload
+          ls -la FontProbe_private.ipa
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: private-probe-ipa
+          path: |
+            probe/FontProbe_private.ipa
+            probe/build_dev.log
