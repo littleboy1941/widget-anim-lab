@@ -24,6 +24,10 @@ struct PhaseWindow: View {
     let cycle: Int
     let size: CGFloat
     let overlap: Double
+    /// Длина окна в фазах и запас после конца окна (для запасного слоя). Окно = [начало фазы −
+    /// overlap, конец фазы (phase + length) + tail]; длина всего окна не больше 1 с (маска-таймер).
+    var length = 1
+    var tail = 0.0
 
     var body: some View {
         let interval = 1.0 / Double(fps)
@@ -31,7 +35,7 @@ struct PhaseWindow: View {
         TimerGlyph(date: reference + interval * Double(phase) - overlap,
                    font: font, size: size)
             .mask {
-                TimerGlyph(date: reference + interval * Double(phase + 1) - 1,
+                TimerGlyph(date: reference + interval * Double(phase + length) + tail - 1,
                            font: font, size: size)
             }
     }
@@ -89,43 +93,81 @@ struct ImageFramesAnimation: View {
     /// закрыты — виджет вспыхивает пустым. Кадр 0 без маски под стопкой заменяет вспышку
     /// кадром. Годится только для непрозрачных кадров: сквозь прозрачные он виден всегда.
     var underlay = false
+    /// Опыт 2026-09-25: с подложкой вспышка пропала, но шарик «телепортируется» в кадр 0.
+    /// Запасной слой — копия анимации под основной с широкими окнами (каждая 2-я фаза,
+    /// окно 2 фазы + по полфазы запаса): при сбое основного слоя виден почти текущий кадр.
+    /// Если и он гаснет — сбой гасит все таймеры разом. Слоёв +≈50 %.
+    var fallback = false
+
+    struct Window: Hashable {
+        let phase: Int
+        var length = 1
+        var lead: Double
+        var tail = 0.0
+    }
+
+    private var mainWindows: [(frame: Int, windows: [Window])] {
+        frames.indices.map { index in
+            (index, variant.phaseToFrame.indices.filter { variant.phaseToFrame[$0] == index }
+                .map { Window(phase: $0, lead: variant.overlapSeconds) })
+        }
+    }
+
+    private var fallbackWindows: [(frame: Int, windows: [Window])] {
+        let half = 0.5 / Double(variant.fps)
+        var result: [Int: [Window]] = [:]
+        for phase in stride(from: 0, to: variant.phaseToFrame.count, by: 2) {
+            result[variant.phaseToFrame[phase], default: []]
+                .append(Window(phase: phase, length: 2, lead: half, tail: half))
+        }
+        return result.keys.sorted().map { ($0, result[$0] ?? []) }
+    }
 
     var body: some View {
         GeometryReader { geometry in
             let side = max(geometry.size.width, geometry.size.height)
-            // Стопки по ≤40 слоёв: 160 крупных кадров в ОДНОЙ ZStack ломали анимацию
-            // (2,5 смены/с), те же 160 кадров в 4 стопках по 40 — 8,0/с, 100 % по порядку
-            // (стенд, прогон 36025144578, 2026-09-24).
             ZStack {
                 if underlay, let first = frames.first {
                     WidgetFramePlacement(image: first, width: variant.width,
                                          height: variant.height, pixelArt: variant.pixelArt)
                         .frame(width: geometry.size.width, height: geometry.size.height)
                 }
-                ForEach(Array(stride(from: 0, to: frames.count, by: Self.stackSize)), id: \.self) { start in
-                    ZStack {
-                        ForEach(start..<min(start + Self.stackSize, frames.count), id: \.self) { index in
-                            WidgetFramePlacement(image: frames[index], width: variant.width,
-                                                 height: variant.height, pixelArt: variant.pixelArt)
-                                .mask {
-                                    ZStack {
-                                        ForEach(variant.phaseToFrame.indices.filter {
-                                            variant.phaseToFrame[$0] == index
-                                        }, id: \.self) { phase in
-                                            PhaseWindow(reference: reference, phase: phase,
-                                                        fps: variant.fps, cycle: variant.cycle,
-                                                        size: side, overlap: variant.overlapSeconds)
-                                        }
-                                    }
-                                    .frame(width: geometry.size.width, height: geometry.size.height)
-                                }
-                        }
-                    }
-                    .frame(width: geometry.size.width, height: geometry.size.height)
+                if fallback {
+                    stacks(fallbackWindows, size: geometry.size, side: side)
                 }
+                stacks(mainWindows, size: geometry.size, side: side)
             }
             .frame(width: geometry.size.width, height: geometry.size.height)
             .clipped()
+        }
+    }
+
+    /// Стопки по ≤40 слоёв: 160 крупных кадров в ОДНОЙ ZStack ломали анимацию
+    /// (2,5 смены/с), те же 160 кадров в 4 стопках по 40 — 8,0/с, 100 % по порядку
+    /// (стенд, прогон 36025144578, 2026-09-24).
+    private func stacks(_ layers: [(frame: Int, windows: [Window])], size: CGSize,
+                        side: CGFloat) -> some View {
+        ZStack {
+            ForEach(Array(stride(from: 0, to: layers.count, by: Self.stackSize)), id: \.self) { start in
+                ZStack {
+                    ForEach(start..<min(start + Self.stackSize, layers.count), id: \.self) { position in
+                        WidgetFramePlacement(image: frames[layers[position].frame], width: variant.width,
+                                             height: variant.height, pixelArt: variant.pixelArt)
+                            .mask {
+                                ZStack {
+                                    ForEach(layers[position].windows, id: \.self) { window in
+                                        PhaseWindow(reference: reference, phase: window.phase,
+                                                    fps: variant.fps, cycle: variant.cycle,
+                                                    size: side, overlap: window.lead,
+                                                    length: window.length, tail: window.tail)
+                                    }
+                                }
+                                .frame(width: size.width, height: size.height)
+                            }
+                    }
+                }
+                .frame(width: size.width, height: size.height)
+            }
         }
     }
 }
