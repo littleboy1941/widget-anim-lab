@@ -72,6 +72,23 @@ final class CoreTests: XCTestCase {
         }, sourceFrameCount: 3), nil)
     }
 
+    /// Кнопка «Тест мигания»: для каждого fps есть план N = fps, C = 2 в бюджете всех размеров.
+    func testRatePresetPlansFitBudget() throws {
+        let budget = AnimationBudget.standard
+        let largest = WidgetSize.allCases.map { size -> Int in
+            let geometry = OutputGeometry.initial(size)
+            return geometry.width * geometry.height
+        }.max() ?? 0
+        for fps in [16, 24, 30] {   // ProjectListView.ratePresetFPS
+            let plans = AnimationPlanner.manualPlans(indices: Array(0..<fps), sourceCount: 30,
+                                                     pixelsPerFrame: largest, budget: budget)
+            let plan = try XCTUnwrap(plans.first { $0.fps == fps && $0.cycle == 2 }, "\(fps) fps")
+            XCTAssertEqual(plan.slotCount, fps)
+            XCTAssertEqual(plan.phaseToFrame, (0..<(2 * fps)).map { $0 % fps })
+            XCTAssertLessThanOrEqual(largest * 4 * fps, budget.maxDecodedBytes)
+        }
+    }
+
     func testSourceLimitsAndOutputDimensions() throws {
         XCTAssertNoThrow(try GIFImporter.validateSource(width: 10_000, height: 8_000,
             bytes: 150_000_000))

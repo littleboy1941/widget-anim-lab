@@ -71,6 +71,7 @@ struct ProjectListView: View {
     @State private var diagnostics: [UUID: AppError] = [:]
     @State private var pendingDelete: UUID?
     @State private var ciStatus: String?
+    @State private var presetStatus: String?
     @State private var showLicenses = false
     private let groupID = AppGroup.identifier
 
@@ -152,6 +153,11 @@ struct ProjectListView: View {
                                     .accessibilityIdentifier("flow-test-gif-\(url.deletingPathExtension().lastPathComponent)")
                             }
                         }
+                        Section("Тест мигания") {
+                            Button("Создать 16 / 24 / 30 fps", systemImage: "speedometer") { createRatePresets() }
+                                .disabled(presetStatus != nil)
+                                .accessibilityIdentifier("flow-rate-presets")
+                        }
                         Section {
                             Button("Лицензии", systemImage: "doc.text") { showLicenses = true }
                         }
@@ -195,6 +201,9 @@ struct ProjectListView: View {
                 if let ciStatus {
                     Text(ciStatus).font(.caption.monospaced()).padding(6)
                         .foregroundStyle(ciStatus == "ci-import-done" ? Color.green : Color.red)
+                } else if let presetStatus {
+                    Text(presetStatus).font(.caption).padding(8)
+                        .background(.ultraThinMaterial, in: Capsule())
                 }
             }
         }
@@ -314,6 +323,46 @@ struct ProjectListView: View {
             } catch {
                 let value = AppError.convert(error)
                 await MainActor.run { self.error = value }
+            }
+        }
+    }
+
+    static let ratePresetFPS = [16, 24, 30]
+
+    /// Тест мигания на телефоне одним нажатием: проекты «Тест 16/24/30 fps» из rate_idx.gif
+    /// (idx-метки для probe/analyze_cells.py), петля 1 с: N = fps первых кадров, C = 2, все размеры.
+    private func createRatePresets() {
+        guard let url = Bundle.main.url(forResource: "rate_idx", withExtension: "gif") else {
+            error = AppError(code: "E_PRESET_SOURCE", message: "В сборке нет rate_idx.gif.",
+                             hint: "Пересоберите приложение.")
+            return
+        }
+        presetStatus = "Создаю тест 16 / 24 / 30 fps…"
+        Task.detached(priority: .userInitiated) {
+            do {
+                let data = try Data(contentsOf: url)
+                let documents = try ProjectDocuments()
+                let store = try ProjectStore(groupIdentifier: groupID)
+                for fps in Self.ratePresetFPS {
+                    var settings = try documents.importBytes(data, name: "Тест \(fps) fps")
+                    settings.manualSlots = Array(0..<fps)
+                    settings.style = .photo
+                    let importer = try documents.source(for: settings)
+                    guard let plan = try settings.availablePlans(importer: importer)
+                        .first(where: { $0.fps == fps && $0.cycle == 2 }) else {
+                        throw AppError(code: "E_PLAN_INVALID",
+                                       message: "Нет плана \(fps) fps · \(fps) слотов · C 2.",
+                                       hint: "Проверьте бюджет фаз и частоты.")
+                    }
+                    settings.selectedPlan = PlanChoice(plan)
+                    try documents.save(settings)
+                    try store.publish(RenderPipeline.makeDraft(importer: importer, settings: settings))
+                }
+                WidgetCenter.shared.reloadAllTimelines()
+                await MainActor.run { presetStatus = nil; refresh() }
+            } catch {
+                let value = AppError.convert(error)
+                await MainActor.run { presetStatus = nil; self.error = value }
             }
         }
     }
