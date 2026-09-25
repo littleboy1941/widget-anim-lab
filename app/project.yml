@@ -32,6 +32,10 @@ targets:
       path: App/Info.plist
       properties:
         CFBundleDisplayName: WidgetLab
+        CFBundleShortVersionString: "$(MARKETING_VERSION)"
+        CFBundleVersion: "$(CURRENT_PROJECT_VERSION)"
+        UISupportedInterfaceOrientations:
+          - UIInterfaceOrientationPortrait
         UILaunchScreen: {}
         ITSAppUsesNonExemptEncryption: false
         NSPhotoLibraryUsageDescription: "Select a Live Photo to use its motion in an animated widget."
@@ -53,6 +57,8 @@ targets:
       path: Widget/Info.plist
       properties:
         CFBundleDisplayName: WidgetLabWidget
+        CFBundleShortVersionString: "$(MARKETING_VERSION)"
+        CFBundleVersion: "$(CURRENT_PROJECT_VERSION)"
         NSExtension:
           NSExtensionPointIdentifier: com.apple.widgetkit-extension
         UIAppFonts:
