@@ -208,10 +208,27 @@ struct ComboExperimentView: View {
     }
 }
 
+/// Одна клетка комбо 30 fps (combo1 = сдвиг −90°, combo0 = без сдвига). Четыре клетки
+/// сразу (combo) система не отрисовала — всю запись заглушка (прогон 36160471686).
+struct ComboSingleView: View {
+    let entry: SwipeEntry
+    let shift: Double
+
+    var body: some View {
+        GatedTimerFramesAnimation(ref: entry.date - 60,
+                                  frames: ImageFramesAnimation.experimentFrames(30, prefix: "fps30"),
+                                  fps: 30, size: 150, shift: shift)
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .containerBackground(.white, for: .widget)
+    }
+}
+
 struct PrivateProbeWidget: Widget {
     var body: some WidgetConfiguration {
         StaticConfiguration(kind: "PrivateProbe", provider: SwipeProvider()) {
-            if Variant.mode == "combo" {
+            if Variant.mode == "combo1" || Variant.mode == "combo0" {
+                ComboSingleView(entry: $0, shift: Variant.mode == "combo1" ? -90 : 0)
+            } else if Variant.mode == "combo" {
                 ComboExperimentView(entry: $0)
             } else if let mode = CapacityMode(Variant.mode) {
                 PrivateCapacityView(mode: mode)
