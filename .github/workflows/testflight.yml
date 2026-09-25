@@ -53,6 +53,7 @@ jobs:
           def signing(profile, extra=""):
               return (
                   "        CODE_SIGN_STYLE: Manual\n"
+                  '        CODE_SIGN_IDENTITY: "Apple Distribution"\n'
                   f"        DEVELOPMENT_TEAM: {os.environ['TEAM_ID']}\n"
                   f'        PROVISIONING_PROFILE_SPECIFIER: "{profile}"\n' + extra
               )
