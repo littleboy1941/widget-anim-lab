@@ -147,6 +147,8 @@ struct GatedTimerFramesAnimation: View {
     let size: CGFloat
     let shift: Double
     var margin = 2.5
+    /// true — сначала ворота-вращение, потом таймеры (comboR); false — наоборот (combo1).
+    var gateFirst = false
 
     var body: some View {
         let count = frames.count
@@ -158,26 +160,25 @@ struct GatedTimerFramesAnimation: View {
         ZStack {
             RotationFramesAnimation(frames: frames, fps: fps, size: size, shift: shift)
             ForEach(0..<count, id: \.self) { j in
-                Image(uiImage: frames[j])
-                    .resizable()
+                let gate = ArcSliceMask(startAngle: shift - angle * (Double(j) + 1 + margin),
+                                        endAngle: shift - angle * (Double(j) - margin), radius: radius)
+                    .stroke(Color.white,
+                            style: StrokeStyle(lineWidth: size * 1.5, lineCap: .butt),
+                            antialiased: false)
                     .frame(width: size, height: size)
-                    .mask {
-                        ZStack {
-                            ForEach(Array(stride(from: j, to: phases, by: count)), id: \.self) { p in
-                                PhaseWindow(ref: ref, phase: p, fps: fps, cycle: cycle, size: size, overlap: 0)
-                            }
-                        }
+                    .clockHandRotationEffect(period: .custom(period))
+                    .offset(y: radius)
+                let windows = ZStack {
+                    ForEach(Array(stride(from: j, to: phases, by: count)), id: \.self) { p in
+                        PhaseWindow(ref: ref, phase: p, fps: fps, cycle: cycle, size: size, overlap: 0)
                     }
-                    .mask(
-                        ArcSliceMask(startAngle: shift - angle * (Double(j) + 1 + margin),
-                                     endAngle: shift - angle * (Double(j) - margin), radius: radius)
-                            .stroke(Color.white,
-                                    style: StrokeStyle(lineWidth: size * 1.5, lineCap: .butt),
-                                    antialiased: false)
-                            .frame(width: size, height: size)
-                            .clockHandRotationEffect(period: .custom(period))
-                            .offset(y: radius)
-                    )
+                }
+                let image = Image(uiImage: frames[j]).resizable().frame(width: size, height: size)
+                if gateFirst {
+                    image.mask(gate).mask(windows)
+                } else {
+                    image.mask(windows).mask(gate)
+                }
             }
         }
         .frame(width: size, height: size)
@@ -226,7 +227,24 @@ struct ComboSingleView: View {
 struct PrivateProbeWidget: Widget {
     var body: some WidgetConfiguration {
         StaticConfiguration(kind: "PrivateProbe", provider: SwipeProvider()) {
-            if Variant.mode == "combo1" || Variant.mode == "combo0" {
+            if Variant.mode == "mix" {
+                // таймеры и вращение рядом, без вложения: рисует ли система вообще такое сочетание
+                HStack(spacing: 12) {
+                    ImageFramesAnimation(ref: $0.date - 60, size: 150,
+                                         frames: ImageFramesAnimation.experimentFrames(30, prefix: "fps30"),
+                                         overlap: 0, cycle: 2, fps: 30)
+                    RotationFramesAnimation(frames: ImageFramesAnimation.experimentFrames(30, prefix: "fps30"),
+                                            fps: 30, size: 150)
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .containerBackground(.white, for: .widget)
+            } else if Variant.mode == "comboR" {
+                GatedTimerFramesAnimation(ref: $0.date - 60,
+                                          frames: ImageFramesAnimation.experimentFrames(30, prefix: "fps30"),
+                                          fps: 30, size: 150, shift: -90, gateFirst: true)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .containerBackground(.white, for: .widget)
+            } else if Variant.mode == "combo1" || Variant.mode == "combo0" {
                 ComboSingleView(entry: $0, shift: Variant.mode == "combo1" ? -90 : 0)
             } else if Variant.mode == "combo" {
                 ComboExperimentView(entry: $0)
