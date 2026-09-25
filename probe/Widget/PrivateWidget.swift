@@ -282,4 +282,47 @@ struct PrivateProbeWidget: Widget {
         .contentMarginsDisabled()
     }
 }
+/// Три маленьких виджета для телефона — поставить рядом и сравнить при свайпах:
+/// комбо (таймеры + вращение), только таймеры, только вращение; все 30 fps × 30 кадров.
+struct SmallCompareView: View {
+    let entry: SwipeEntry
+    let kind: String
+
+    var body: some View {
+        let frames = ImageFramesAnimation.experimentFrames(30, prefix: "fps30")
+        Group {
+            switch kind {
+            case "combo":
+                GatedTimerFramesAnimation(ref: entry.date - 60, frames: frames, fps: 30, size: 150, shift: -90)
+            case "timers":
+                ImageFramesAnimation(ref: entry.date - 60, size: 150, frames: frames, overlap: 0, cycle: 2, fps: 30)
+            default:
+                RotationFramesAnimation(frames: frames, fps: 30, size: 150, shift: -90)
+            }
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .containerBackground(.white, for: .widget)
+    }
+}
+
+struct ComboSmallWidget: Widget {
+    var body: some WidgetConfiguration {
+        StaticConfiguration(kind: "Combo30", provider: OneEntryProvider()) { SmallCompareView(entry: $0, kind: "combo") }
+            .configurationDisplayName("Combo 30").supportedFamilies([.systemSmall]).contentMarginsDisabled()
+    }
+}
+
+struct TimersSmallWidget: Widget {
+    var body: some WidgetConfiguration {
+        StaticConfiguration(kind: "Timers30", provider: OneEntryProvider()) { SmallCompareView(entry: $0, kind: "timers") }
+            .configurationDisplayName("Timers 30").supportedFamilies([.systemSmall]).contentMarginsDisabled()
+    }
+}
+
+struct RotationSmallWidget: Widget {
+    var body: some WidgetConfiguration {
+        StaticConfiguration(kind: "Rotation30", provider: OneEntryProvider()) { SmallCompareView(entry: $0, kind: "rotation") }
+            .configurationDisplayName("Rotation 30").supportedFamilies([.systemSmall]).contentMarginsDisabled()
+    }
+}
 #endif
