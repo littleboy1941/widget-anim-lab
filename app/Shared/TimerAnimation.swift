@@ -85,6 +85,10 @@ struct ImageFramesAnimation: View {
     let reference: Date
     let variant: WidgetVariant
     let frames: [UIImage]
+    /// Опыт 2026-09-25: на iPhone 12 после возврата из приложения все маски на 17–50 мс
+    /// закрыты — виджет вспыхивает пустым. Кадр 0 без маски под стопкой заменяет вспышку
+    /// кадром. Годится только для непрозрачных кадров: сквозь прозрачные он виден всегда.
+    var underlay = false
 
     var body: some View {
         GeometryReader { geometry in
@@ -93,6 +97,11 @@ struct ImageFramesAnimation: View {
             // (2,5 смены/с), те же 160 кадров в 4 стопках по 40 — 8,0/с, 100 % по порядку
             // (стенд, прогон 36025144578, 2026-09-24).
             ZStack {
+                if underlay, let first = frames.first {
+                    WidgetFramePlacement(image: first, width: variant.width,
+                                         height: variant.height, pixelArt: variant.pixelArt)
+                        .frame(width: geometry.size.width, height: geometry.size.height)
+                }
                 ForEach(Array(stride(from: 0, to: frames.count, by: Self.stackSize)), id: \.self) { start in
                     ZStack {
                         ForEach(start..<min(start + Self.stackSize, frames.count), id: \.self) { index in

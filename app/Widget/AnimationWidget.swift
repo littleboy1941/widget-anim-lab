@@ -38,6 +38,7 @@ struct AnimationConfigurationIntent: WidgetConfigurationIntent {
 
     @Parameter(title: "Animation") var animation: AnimationEntity?
     @Parameter(title: "Diagnostics", default: false) var diagnostics: Bool
+    @Parameter(title: "Underlay (test)", default: false) var underlay: Bool
 }
 
 struct AnimationEntry: TimelineEntry {
@@ -112,7 +113,8 @@ struct AnimationWidgetView: View {
         Group {
             if let snapshot = entry.snapshot {
                 ImageFramesAnimation(reference: entry.date.addingTimeInterval(-60),
-                                     variant: snapshot.variant, frames: snapshot.frames)
+                                     variant: snapshot.variant, frames: snapshot.frames,
+                                     underlay: entry.configuration.underlay)
                     .overlay(alignment: .topLeading) {
                         if entry.configuration.diagnostics {
                             Text("\(snapshot.variant.fps) fps / \(snapshot.variant.slotCount) slots / \(snapshot.variant.cycle)s / \(snapshot.variant.decodedBytes / 1_048_576) MB")
