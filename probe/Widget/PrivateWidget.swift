@@ -226,11 +226,11 @@ struct ComboSingleView: View {
 
 struct PrivateProbeWidget: Widget {
     var body: some WidgetConfiguration {
-        StaticConfiguration(kind: "PrivateProbe", provider: SwipeProvider()) {
+        StaticConfiguration(kind: "PrivateProbe", provider: SwipeProvider()) { entry in
             if Variant.mode == "mix" {
                 // таймеры и вращение рядом, без вложения: рисует ли система вообще такое сочетание
                 HStack(spacing: 12) {
-                    ImageFramesAnimation(ref: $0.date - 60, size: 150,
+                    ImageFramesAnimation(ref: entry.date - 60, size: 150,
                                          frames: ImageFramesAnimation.experimentFrames(30, prefix: "fps30"),
                                          overlap: 0, cycle: 2, fps: 30)
                     RotationFramesAnimation(frames: ImageFramesAnimation.experimentFrames(30, prefix: "fps30"),
@@ -239,19 +239,19 @@ struct PrivateProbeWidget: Widget {
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .containerBackground(.white, for: .widget)
             } else if Variant.mode == "comboR" {
-                GatedTimerFramesAnimation(ref: $0.date - 60,
+                GatedTimerFramesAnimation(ref: entry.date - 60,
                                           frames: ImageFramesAnimation.experimentFrames(30, prefix: "fps30"),
                                           fps: 30, size: 150, shift: -90, gateFirst: true)
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                     .containerBackground(.white, for: .widget)
             } else if Variant.mode == "combo1" || Variant.mode == "combo0" {
-                ComboSingleView(entry: $0, shift: Variant.mode == "combo1" ? -90 : 0)
+                ComboSingleView(entry: entry, shift: Variant.mode == "combo1" ? -90 : 0)
             } else if Variant.mode == "combo" {
-                ComboExperimentView(entry: $0)
+                ComboExperimentView(entry: entry)
             } else if let mode = CapacityMode(Variant.mode) {
                 PrivateCapacityView(mode: mode)
             } else {
-                PrivateExperimentView(entry: $0)
+                PrivateExperimentView(entry: entry)
             }
         }
         .configurationDisplayName("Probe 0")
