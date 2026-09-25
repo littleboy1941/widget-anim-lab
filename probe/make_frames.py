@@ -51,6 +51,32 @@ def make_frame(index: int, count: int, size: int) -> Image.Image:
     return image
 
 
+def make_capacity_frame(index: int, count: int, size: int) -> Image.Image:
+    """Three base-16 markers encode 0..4095; keep make_frame's two-marker format."""
+    if not 0 <= index < count <= 4096:
+        raise ValueError("capacity frame index/count must fit three hex digits")
+    image = Image.new("RGBA", (size, size), (0, 0, 0, 0))
+    draw = ImageDraw.Draw(image)
+    marker = max(7, size // 6)
+    for position, digit in enumerate((index // 256, (index // 16) % 16, index % 16)):
+        center = round(size * (position + 1) / 4)
+        draw.rectangle(
+            (center - marker // 2, 0, center - marker // 2 + marker - 1, marker - 1),
+            fill=PALETTE[digit] + (255,),
+        )
+    angle = 2 * math.pi * index / count
+    radius = size * 0.19
+    cx = size * 0.5 + radius * math.cos(angle)
+    cy = size * 0.69 + radius * math.sin(angle)
+    ball_radius = size / 12
+    draw.ellipse(
+        (round(cx - ball_radius), round(cy - ball_radius),
+         round(cx + ball_radius), round(cy + ball_radius)),
+        fill=(40, 40, 40, 255),
+    )
+    return image
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--count", type=int, required=True, help="number of frames, 1..240")

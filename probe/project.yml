@@ -35,6 +35,8 @@ targets:
         optional: true
       - path: RateFrames
         optional: true
+      - path: CapacityFrames
+        optional: true
       - path: DeepFrames
         optional: true
       # кадры для замера памяти (CI, make_frames.py)
@@ -217,6 +219,8 @@ targets:
       - path: SlowFrames
         optional: true
       - path: RateFrames
+        optional: true
+      - path: CapacityFrames
         optional: true
       - path: DeepFrames
         optional: true

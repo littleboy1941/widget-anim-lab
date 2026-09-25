@@ -1,0 +1,132 @@
+name: Private capacity matrix
+
+on:
+  workflow_dispatch:
+
+jobs:
+  capacity:
+    runs-on: macos-26
+    timeout-minutes: 70
+    strategy:
+      fail-fast: false
+      matrix:
+        mode:
+          - p30n150s128k50
+          - p30n150s128k50g40
+          - p30n300s128k50g40
+          - p30n300s128k500g40
+          - p60n300s128k500g40
+          - p60n600s128k50g40
+          - p60n600s128k500g40
+          - p30n300s300k500g40
+    env:
+      MODE: ${{ matrix.mode }}
+      SKIP_APP: "1"
+      NO_ANALYZE: "1"
+      CAPACITY_TEST: "1"
+      RECORD_SECONDS: "30"
+      PROBE_SWIFT_FLAGS: PRIVATE_EXPERIMENTS
+      REPLACE_APP: out/FontProbe.app
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Generate frames and select mode
+        run: |
+          python3 -m pip install --quiet --break-system-packages pillow numpy opencv-python-headless
+          python3 probe/prepare_capacity.py "$MODE"
+          python3 - <<'PY'
+          import os
+          from pathlib import Path
+          p = Path('probe/Shared/Variant.swift')
+          source = p.read_text()
+          old = 'static let mode = "overlap"'
+          assert source.count(old) == 1
+          p.write_text(source.replace(old, f'static let mode = "{os.environ["MODE"]}"'))
+          PY
+
+      - name: Install XcodeGen
+        run: |
+          curl -sL -o xcodegen.zip https://github.com/yonaskolb/XcodeGen/releases/latest/download/xcodegen.zip
+          unzip -q xcodegen.zip -d xcodegen
+          echo "$PWD/xcodegen/xcodegen/bin" >> "$GITHUB_PATH"
+
+      - name: ClockHandRotationKit for simulator
+        run: bash probe/patch_chrk.sh
+
+      - name: Link ClockHandRotationKit
+        run: |
+          cd probe
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path("project.yml")
+          t = p.read_text()
+          def rep(old, new):
+              global t
+              assert t.count(old) == 1, old
+              t = t.replace(old, new)
+          fw = "      - framework: Frameworks/ClockHandRotationKit.framework\n"
+          rep('    SWIFT_VERSION: "5.0"\n',
+              '    SWIFT_VERSION: "5.0"\n    FRAMEWORK_SEARCH_PATHS: $(PROJECT_DIR)/Frameworks\n')
+          rep("    dependencies:\n      - target: FontProbeWidget\n",
+              "    dependencies:\n      - target: FontProbeWidget\n" + fw + "        embed: true\n")
+          rep("  FontProbeWidget:\n    type: app-extension\n",
+              "  FontProbeWidget:\n    type: app-extension\n    dependencies:\n" + fw + "        embed: false\n")
+          p.write_text(t)
+          PY
+          xcodegen generate
+
+      - name: Build with Xcode 26.0.1 (SDK 26.0)
+        run: |
+          cd probe
+          export DEVELOPER_DIR=/Applications/Xcode_26.0.1.app/Contents/Developer
+          xcodebuild -version
+          build() {
+            xcodebuild -project FontProbe.xcodeproj -scheme FontProbe -configuration Release \
+              -sdk iphonesimulator -destination 'generic/platform=iOS Simulator' \
+              -derivedDataPath build_sim ARCHS=arm64 ONLY_ACTIVE_ARCH=NO CODE_SIGNING_ALLOWED=NO \
+              SWIFT_ACTIVE_COMPILATION_CONDITIONS=PRIVATE_EXPERIMENTS build > build_sim.log 2>&1
+          }
+          if ! build; then
+            if grep -qE "no destinations|is not installed" build_sim.log; then
+              xcodebuild -downloadPlatform iOS
+              build || { grep -E "error:" build_sim.log | head -40; tail -40 build_sim.log; exit 1; }
+            else
+              grep -E "error:" build_sim.log | head -40; tail -40 build_sim.log; exit 1
+            fi
+          fi
+          mkdir -p out
+          cp -R build_sim/Build/Products/Release-iphonesimulator/FontProbe.app out/
+          codesign -f -s - --deep out/FontProbe.app
+          xcrun vtool -show-build out/FontProbe.app/PlugIns/FontProbeWidget.appex/FontProbeWidget | grep -E "platform|sdk"
+
+      - name: Ensure iOS simulator runtime
+        run: |
+          sudo xcode-select -s /Applications/Xcode_26.6.app/Contents/Developer
+          xcrun simctl list runtimes | grep -q "iOS" || xcodebuild -downloadPlatform iOS
+
+      - name: Record 30 seconds without swipes
+        run: RUNTIME_PREFIX="26." bash probe/run.sh "0,0,0"
+
+      - name: Analyze capacity video
+        if: always()
+        run: |
+          VIDEO=$(find probe/out -name home_widget.mp4 -print -quit)
+          if [ -z "$VIDEO" ]; then
+            echo "home_widget.mp4 missing" | tee probe/capacity-summary.txt
+            exit 1
+          fi
+          python3 probe/analyze_capacity.py "$VIDEO" --mode "$MODE" | tee probe/capacity-summary.txt
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: private-capacity-${{ matrix.mode }}
+          path: |
+            probe/capacity-summary.txt
+            probe/out/ios*/home_widget.mp4
+            probe/out/ios*/home_widget.png
+            probe/out/ios*/result.txt
+            probe/out/ios*/uitest.log
+            probe/out/ios*/widget_log.txt
+            probe/out/ios*/crash/
+            probe/build_sim.log

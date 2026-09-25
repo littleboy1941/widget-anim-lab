@@ -2,8 +2,8 @@
 // 1.1.0, MIT) — как у конкурентов (TapeKit) и личного виджета. Эффект работает только в сборках
 // SDK ≤ 26.0 (Xcode 26.0.1): workflow private-probe.yml. Кадры — дуги огромного радиуса,
 // которые система вращает сама; приём Widgetnimation (MIT).
-// Две клетки: 16 fps × 16 кадров и 30 fps × 30 кадров (idx-метки make_frames.py), петля 1 с.
-// Вопросы: частота и порядок кадров, живёт ли анимация во время свайпа (analyze_swipe.py).
+// По умолчанию две клетки 16/30 fps для свайпов. Variant.mode = p{fps}n{N}s{pt}k{k}[g{batch}]
+// выбирает одну capacity-анимацию с глобальными индексами дуг и петлёй N/fps секунд.
 #if PRIVATE_EXPERIMENTS
 import ClockHandRotationKit
 import SwiftUI
@@ -26,30 +26,94 @@ struct RotationFramesAnimation: View {
     let frames: [UIImage]
     let fps: Int
     let size: CGFloat
+    var radiusMultiplier: CGFloat = 50
+    var groupSize: Int = 0
+
+    private func frameLayer(_ index: Int, radius: CGFloat, angle: Double,
+                            period: Double) -> some View {
+        Image(uiImage: frames[index])
+            .resizable()
+            .frame(width: size, height: size)
+            .mask(
+                ArcSliceMask(startAngle: -angle * Double(index + 1),
+                             endAngle: -angle * Double(index), radius: radius)
+                    .stroke(Color.white,
+                            style: StrokeStyle(lineWidth: size * 1.5, lineCap: .butt),
+                            antialiased: false)
+                    .frame(width: size, height: size)
+                    .clockHandRotationEffect(period: .custom(period))
+                    .offset(y: radius)
+            )
+    }
 
     var body: some View {
-        let radius = size * 50
+        let radius = size * radiusMultiplier
         let angle = 360.0 / Double(max(1, frames.count))
         let period = Double(frames.count) / Double(fps)
+        let batch = groupSize > 0 ? groupSize : max(1, frames.count)
+        let groups = (frames.count + batch - 1) / batch
         ZStack {
-            ForEach(frames.indices, id: \.self) { index in
-                Image(uiImage: frames[index])
-                    .resizable()
-                    .frame(width: size, height: size)
-                    .mask(
-                        ArcSliceMask(startAngle: -angle * Double(index + 1),
-                                     endAngle: -angle * Double(index), radius: radius)
-                            .stroke(Color.white,
-                                    style: StrokeStyle(lineWidth: size * 1.5, lineCap: .butt),
-                                    antialiased: false)
-                            .frame(width: size, height: size)
-                            .clockHandRotationEffect(period: .custom(period))
-                            .offset(y: radius)
-                    )
+            ForEach(0..<groups, id: \.self) { group in
+                ZStack {
+                    ForEach(group * batch..<min((group + 1) * batch, frames.count), id: \.self) { index in
+                        frameLayer(index, radius: radius, angle: angle, period: period)
+                    }
+                }
             }
         }
         .frame(width: size, height: size)
         .clipped()
+    }
+}
+
+private struct CapacityMode {
+    let fps: Int
+    let count: Int
+    let size: Int
+    let radiusMultiplier: Int
+    let groupSize: Int
+
+    init?(_ raw: String) {
+        let scanner = Scanner(string: raw)
+        scanner.charactersToBeSkipped = nil
+        guard scanner.scanString("p") != nil, let fps = scanner.scanInt(),
+              scanner.scanString("n") != nil, let count = scanner.scanInt(),
+              scanner.scanString("s") != nil, let size = scanner.scanInt(),
+              scanner.scanString("k") != nil, let radiusMultiplier = scanner.scanInt()
+        else { return nil }
+        var groupSize = 0
+        if scanner.scanString("g") != nil {
+            guard let parsed = scanner.scanInt(), parsed > 0 else { return nil }
+            groupSize = parsed
+        }
+        guard scanner.isAtEnd, fps > 0, count > 0, count <= 4096,
+              size >= 32, size <= 320, radiusMultiplier > 0 else { return nil }
+        self.fps = fps
+        self.count = count
+        self.size = size
+        self.radiusMultiplier = radiusMultiplier
+        self.groupSize = groupSize
+    }
+}
+
+private struct PrivateCapacityView: View {
+    let mode: CapacityMode
+
+    var body: some View {
+        let frames = ImageFramesAnimation.experimentFrames(mode.count, prefix: "cap")
+        VStack(spacing: 4) {
+            if frames.count == mode.count {
+                RotationFramesAnimation(frames: frames, fps: mode.fps,
+                                        size: CGFloat(mode.size),
+                                        radiusMultiplier: CGFloat(mode.radiusMultiplier),
+                                        groupSize: mode.groupSize)
+            } else {
+                Text("Missing frames \(frames.count)/\(mode.count)")
+                    .foregroundStyle(.red)
+            }
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .containerBackground(.white, for: .widget)
     }
 }
 
@@ -71,7 +135,11 @@ struct PrivateExperimentView: View {
 struct PrivateProbeWidget: Widget {
     var body: some WidgetConfiguration {
         StaticConfiguration(kind: "PrivateProbe", provider: SwipeProvider()) {
-            PrivateExperimentView(entry: $0)
+            if let mode = CapacityMode(Variant.mode) {
+                PrivateCapacityView(mode: mode)
+            } else {
+                PrivateExperimentView(entry: $0)
+            }
         }
         .configurationDisplayName("Probe 0")
         .supportedFamilies([.systemLarge])

@@ -46,14 +46,14 @@ def parse_cell(spec: str) -> Cell:
         name, geometry, *mode = spec.split(":")
         x, y, width, height = (int(v) for v in geometry.split(","))
         selected = mode[0] if mode else "m12"
-        if not name or len(mode) > 1 or selected not in ("m12", "idx"):
+        if not name or len(mode) > 1 or selected not in ("m12", "idx", "idx3"):
             raise ValueError
         if min(x, y) < 0 or min(width, height) <= 0:
             raise ValueError
         return Cell(name, x, y, width, height, selected)
     except ValueError as exc:
         raise argparse.ArgumentTypeError(
-            "cell must be NAME:x,y,w,h[:m12|idx] with positive dimensions"
+            "cell must be NAME:x,y,w,h[:m12|idx|idx3] with positive dimensions"
         ) from exc
 
 
@@ -62,7 +62,8 @@ def palette_lab(palette: tuple[tuple[int, int, int], ...]) -> np.ndarray:
     return cv2.cvtColor(rgb, cv2.COLOR_RGB2LAB)[0].astype(np.float32)
 
 
-LAB_PALETTES = {"m12": palette_lab(M12_PALETTE), "idx": palette_lab(IDX_PALETTE)}
+LAB_PALETTES = {"m12": palette_lab(M12_PALETTE),
+                "idx": palette_lab(IDX_PALETTE), "idx3": palette_lab(IDX_PALETTE)}
 
 
 def marker(
@@ -96,7 +97,7 @@ def marker(
     )
     # A second solid color in the interior of a marker is useful evidence of
     # overlap. Codec noise at its edges is excluded by sampling only its core.
-    mixed = mode == "idx" and runner_pixels > 0.16 * len(nearest) and best_pixels < 0.80 * len(nearest)
+    mixed = mode in ("idx", "idx3") and runner_pixels > 0.16 * len(nearest) and best_pixels < 0.80 * len(nearest)
     return best, True, mixed
 
 
@@ -106,12 +107,20 @@ def inspect_cell(bgr: np.ndarray, mode: str, time: float) -> Sample:
         index = major
         blank = not present
         mixed = False
-    else:
+    elif mode == "idx":
         major, left, mixed_left = marker(bgr, (0.04, 0.04, 0.16, 0.16), mode)
         minor, right, mixed_right = marker(bgr, (0.84, 0.04, 0.96, 0.16), mode)
         index = 16 * major + minor if left and right and major is not None and minor is not None else None
         blank = not left and not right
         mixed = mixed_left or mixed_right
+    else:
+        readings = [marker(bgr, (center - 0.035, 0.025, center + 0.035, 0.115), mode)
+                    for center in (0.25, 0.50, 0.75)]
+        digits = [reading[0] for reading in readings]
+        index = (256 * digits[0] + 16 * digits[1] + digits[2]
+                 if all(digit is not None for digit in digits) else None)
+        blank = not any(reading[1] for reading in readings)
+        mixed = any(reading[2] for reading in readings)
 
     # The moving ball is near neutral gray. Limit this search to the area below
     # the markers so dark palette entries never contribute to its area.
@@ -217,8 +226,8 @@ def main() -> None:
     args = parser.parse_args()
     if args.start < 0 or args.end is not None and args.end <= args.start:
         parser.error("time range must satisfy 0 <= --start < --end")
-    if args.frames is not None and not 1 <= args.frames <= 240:
-        parser.error("--frames must be between 1 and 240")
+    if args.frames is not None and not 1 <= args.frames <= 4096:
+        parser.error("--frames must be between 1 and 4096")
     if not args.cell and not args.dump_frame:
         parser.error("specify at least one --cell or --dump-frame")
 

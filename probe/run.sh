@@ -72,7 +72,7 @@ fi
 echo "== UI-тест: ставим виджет на домашний экран"
 # В опыте со свайпом (SWIPE_TEST) второй тест, testSwipes, идёт позже — под запись.
 ONLY_ADD=()
-[ -n "${SWIPE_TEST:-}" ] && ONLY_ADD=(-only-testing:FontProbeUITests/AddWidgetUITests/testAddImagesWidget)
+[ -n "${SWIPE_TEST:-}${CAPACITY_TEST:-}" ] && ONLY_ADD=(-only-testing:FontProbeUITests/AddWidgetUITests/testAddImagesWidget)
 xcodebuild test -project FontProbe.xcodeproj -scheme FontProbe -destination "id=$DEV" ${ONLY_ADD[@]+"${ONLY_ADD[@]}"} \
   -derivedDataPath build_test CODE_SIGN_IDENTITY=- CODE_SIGNING_ALLOWED=YES CODE_SIGNING_REQUIRED=NO \
   SWIFT_ACTIVE_COMPILATION_CONDITIONS="${PROBE_SWIFT_FLAGS:-}" \
