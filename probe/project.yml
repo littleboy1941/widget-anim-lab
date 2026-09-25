@@ -57,6 +57,8 @@ targets:
           - WABlink20.ttf
           - WABlink30.ttf
           - WABlink60.ttf
+          - WAStartOpen.ttf
+          - WAStartPulse.ttf
           - WAFrame0.ttf
           - WAFrame1.ttf
           - WAFrame2.ttf
@@ -243,6 +245,8 @@ targets:
         - WABlink20.ttf
         - WABlink30.ttf
         - WABlink60.ttf
+        - WAStartOpen.ttf
+        - WAStartPulse.ttf
         - WAFrame0.ttf
         - WAFrame1.ttf
         - WAFrame2.ttf

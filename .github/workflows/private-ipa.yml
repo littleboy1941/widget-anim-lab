@@ -17,8 +17,10 @@ jobs:
       - name: Frames
         run: |
           cd probe
-          python3 -m pip install --quiet --break-system-packages pillow
+          python3 -m pip install --quiet --break-system-packages pillow fonttools
           python3 prepare_swipe.py
+          python3 fontgen.py --start-gates-only --out Fonts
+          python3 check_start_gates.py
 
       - name: Install XcodeGen
         run: |

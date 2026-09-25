@@ -112,11 +112,14 @@ def square_glyph(em):
     return pen.glyph()
 
 
-def build_font(path, family, em, extra_glyphs, liga, svg_docs=None, bitmap_docs=None):
+def build_font(path, family, em, extra_glyphs, liga, svg_docs=None, bitmap_docs=None,
+               digit_glyph=None, feature_source=None):
     """extra_glyphs: {имя: glyf-глиф}; liga: {(a, b): имя глифа}; svg_docs: {имя: svg}."""
     base = [".notdef", "space"] + DIGITS + ["colon"]
     order = base + list(extra_glyphs)
     glyphs = {g: empty_glyph() for g in base}
+    if digit_glyph is not None:
+        glyphs.update({g: digit_glyph for g in DIGITS})
     glyphs.update(extra_glyphs)
 
     fb = FontBuilder(em, isTTF=True)
@@ -136,7 +139,8 @@ def build_font(path, family, em, extra_glyphs, liga, svg_docs=None, bitmap_docs=
     rules = "\n".join(f"  sub {DIGITS[a]} {DIGITS[b]} by {g};" for (a, b), g in sorted(liga.items()))
     fb.addOpenTypeFeatures(
         "languagesystem DFLT dflt;\nlanguagesystem latn dflt;\n"
-        f"feature liga {{\n{rules}\n}} liga;\n"
+        + (feature_source if feature_source is not None
+           else f"feature liga {{\n{rules}\n}} liga;\n")
     )
     if svg_docs:
         table = newTable("SVG ")
@@ -172,6 +176,35 @@ def generate_blinks(out, cycles, em):
                    {"full": square_glyph(em), "empty": empty_glyph()}, blink_liga)
 
 
+def generate_start_gates(out, em=TEST_SIZE * 16):
+    """One-shot mask for the entry date. The rightmost timer digit owns the cell.
+
+    The contextual lookup changes that digit only for the complete zero-time
+    spelling (0:00 or 00:00). The ignore rules protect the same suffix in
+    H:MM:SS and M:SS, so the gate stays open after minute/hour rollover.
+    Open and Pulse are complements: OR-ing Open(entry) and Pulse(entry+.25)
+    hides the upper animation for approximately the first quarter second.
+    """
+    for family, default_full, zero_glyph in (
+        ("WAStartOpen", True, "empty"),
+        ("WAStartPulse", False, "full"),
+    ):
+        # Order matters: handle a complete 00:00 before protecting the shorter
+        # 0:00 suffix, while the leading colon protects H:00:00.
+        feature = f"""feature liga {{
+  @digits = [{' '.join(DIGITS)}];
+  ignore sub colon zero zero colon zero zero';
+  sub zero zero colon zero zero' by {zero_glyph};
+  ignore sub @digits zero colon zero zero';
+  sub zero colon zero zero' by {zero_glyph};
+}} liga;
+"""
+        build_font(os.path.join(out, f"{family}.ttf"), family, em,
+                   {"full": square_glyph(em), "empty": empty_glyph()}, {},
+                   digit_glyph=square_glyph(em) if default_full else empty_glyph(),
+                   feature_source=feature)
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--fps", type=int, default=8)
@@ -182,9 +215,17 @@ def main():
     ap.add_argument("--input-dir", type=Path, help="numbered frame_<n>.png inputs")
     ap.add_argument("--blink", type=int, nargs="*", default=[2, 3], help="циклы мигающих масок, с")
     ap.add_argument("--blink-only", action="store_true", help="generate only WABlink fonts")
+    ap.add_argument("--start-gates-only", action="store_true",
+                    help="generate WAStartOpen and WAStartPulse masks")
     ap.add_argument("--png-out", help="куда сохранить кадры PNG (вариант с картинками)")
     ap.add_argument("images", nargs="*")
     args = ap.parse_args()
+
+    if args.start_gates_only:
+        os.makedirs(args.out, exist_ok=True)
+        generate_start_gates(args.out)
+        print("start gates: WAStartOpen, WAStartPulse")
+        return
 
     if args.blink_only:
         os.makedirs(args.out, exist_ok=True)

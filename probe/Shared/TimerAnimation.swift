@@ -141,6 +141,7 @@ struct ImageFramesAnimation: View {
         ZStack {
             ForEach(0..<frames.count, id: \.self) { f in
                 Image(uiImage: frames[f])
+                    .widgetAccentedRenderingMode(.fullColor)
                     .resizable()
                     .interpolation(.none)
                     .frame(width: size, height: size)
@@ -194,6 +195,7 @@ struct SplitImageFramesAnimation: View {
                         let i = stack * stackSize + local
                         if i < frames.count {
                             Image(uiImage: frames[i])
+                                .widgetAccentedRenderingMode(.fullColor)
                                 .resizable()
                                 .interpolation(.none)
                                 .frame(width: size, height: size)
@@ -253,6 +255,7 @@ struct GroupedImageFramesAnimation: View {
                     ForEach(0..<(frames.count / fps), id: \.self) { second in
                         let i = second * fps + slot
                         Image(uiImage: frames[i])
+                            .widgetAccentedRenderingMode(.fullColor)
                             .resizable()
                             .interpolation(.none)
                             .frame(width: size, height: size)

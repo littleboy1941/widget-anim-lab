@@ -36,6 +36,7 @@ struct RotationFramesAnimation: View {
     private func frameLayer(_ index: Int, radius: CGFloat, angle: Double,
                             period: Double) -> some View {
         Image(uiImage: frames[index])
+            .widgetAccentedRenderingMode(.fullColor)
             .resizable()
             .frame(width: size, height: size)
             .mask(
@@ -149,40 +150,108 @@ struct GatedTimerFramesAnimation: View {
     var margin = 2.5
     /// true — сначала ворота-вращение, потом таймеры (comboR); false — наоборот (combo1).
     var gateFirst = false
+    /// The two fixes are opt-in so Combo30 remains the original control.
+    var eraseLower = false
+    var startDate: Date? = nil
+
+    private func gate(_ j: Int, angle: Double, radius: CGFloat, period: Double) -> some View {
+        ArcSliceMask(startAngle: shift - angle * (Double(j) + 1 + margin),
+                     endAngle: shift - angle * (Double(j) - margin), radius: radius)
+            .stroke(Color.white,
+                    style: StrokeStyle(lineWidth: size * 1.5, lineCap: .butt),
+                    antialiased: false)
+            .frame(width: size, height: size)
+            .clockHandRotationEffect(period: .custom(period))
+            .offset(y: radius)
+    }
+
+    private func windows(_ j: Int, phases: Int) -> some View {
+        ZStack {
+            ForEach(Array(stride(from: j, to: phases, by: frames.count)), id: \.self) { p in
+                PhaseWindow(ref: ref, phase: p, fps: fps, cycle: 2, size: size, overlap: 0)
+            }
+        }
+    }
+
+    private func eraser(_ j: Int, phases: Int, angle: Double,
+                        radius: CGFloat, period: Double) -> some View {
+        Rectangle()
+            .fill(Color.white)
+            .frame(width: size, height: size)
+            .mask(windows(j, phases: phases))
+            .mask(gate(j, angle: angle, radius: radius, period: period))
+    }
+
+    private func upperFrame(_ j: Int, phases: Int, angle: Double,
+                            radius: CGFloat, period: Double) -> some View {
+        let image = Image(uiImage: frames[j])
+            .widgetAccentedRenderingMode(.fullColor)
+            .resizable()
+            .frame(width: size, height: size)
+        return Group {
+            if gateFirst {
+                image.mask(gate(j, angle: angle, radius: radius, period: period))
+                    .mask(windows(j, phases: phases))
+            } else {
+                image.mask(windows(j, phases: phases))
+                    .mask(gate(j, angle: angle, radius: radius, period: period))
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func startMasked<Content: View>(_ content: Content) -> some View {
+        if let startDate {
+            content.mask(StartGateMask(date: startDate, size: size))
+        } else {
+            content
+        }
+    }
 
     var body: some View {
         let count = frames.count
-        let cycle = 2
-        let phases = cycle * fps
+        let phases = 2 * fps
         let radius = size * 50
         let angle = 360.0 / Double(max(1, count))
         let period = Double(count) / Double(fps)
         ZStack {
-            RotationFramesAnimation(frames: frames, fps: fps, size: size, shift: shift)
-            ForEach(0..<count, id: \.self) { j in
-                let gate = ArcSliceMask(startAngle: shift - angle * (Double(j) + 1 + margin),
-                                        endAngle: shift - angle * (Double(j) - margin), radius: radius)
-                    .stroke(Color.white,
-                            style: StrokeStyle(lineWidth: size * 1.5, lineCap: .butt),
-                            antialiased: false)
-                    .frame(width: size, height: size)
-                    .clockHandRotationEffect(period: .custom(period))
-                    .offset(y: radius)
-                let windows = ZStack {
-                    ForEach(Array(stride(from: j, to: phases, by: count)), id: \.self) { p in
-                        PhaseWindow(ref: ref, phase: p, fps: fps, cycle: cycle, size: size, overlap: 0)
+            if eraseLower {
+                RotationFramesAnimation(frames: frames, fps: fps, size: size, shift: shift)
+                    .overlay {
+                        startMasked(ZStack {
+                            ForEach(0..<count, id: \.self) { j in
+                                eraser(j, phases: phases, angle: angle, radius: radius, period: period)
+                            }
+                        })
+                        .blendMode(.destinationOut)
                     }
-                }
-                let image = Image(uiImage: frames[j]).resizable().frame(width: size, height: size)
-                if gateFirst {
-                    image.mask(gate).mask(windows)
-                } else {
-                    image.mask(windows).mask(gate)
-                }
+                    .compositingGroup()
+            } else {
+                RotationFramesAnimation(frames: frames, fps: fps, size: size, shift: shift)
             }
+            startMasked(ZStack {
+                ForEach(0..<count, id: \.self) { j in
+                    upperFrame(j, phases: phases, angle: angle, radius: radius, period: period)
+                }
+            })
         }
         .frame(width: size, height: size)
         .clipped()
+    }
+}
+
+/// At entry.date both timers hide the top layer. The second reaches 0:00
+/// about 0.25 s later; by the time it leaves 0:00, the first is already open.
+private struct StartGateMask: View {
+    let date: Date
+    let size: CGFloat
+
+    var body: some View {
+        ZStack {
+            TimerGlyph(date: date, font: "WAStartOpen-Regular", size: size)
+            TimerGlyph(date: date + 0.25, font: "WAStartPulse-Regular", size: size)
+        }
+        .frame(width: size, height: size)
     }
 }
 
@@ -267,6 +336,13 @@ struct PrivateProbeWidget: Widget {
                                           fps: 30, size: 150, shift: -90, gateFirst: true)
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                     .containerBackground(.white, for: .widget)
+            } else if Variant.mode == "combo2" {
+                GatedTimerFramesAnimation(ref: entry.date - 60,
+                                          frames: ImageFramesAnimation.experimentFrames(30, prefix: "fps30"),
+                                          fps: 30, size: 150, shift: -90, eraseLower: true,
+                                          startDate: entry.date)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .containerBackground(.white, for: .widget)
             } else if Variant.mode == "combo1" || Variant.mode == "combo0" {
                 ComboSingleView(entry: entry, shift: Variant.mode == "combo1" ? -90 : 0)
             } else if Variant.mode == "combo" {
@@ -294,6 +370,10 @@ struct SmallCompareView: View {
             switch kind {
             case "combo":
                 GatedTimerFramesAnimation(ref: entry.date - 60, frames: frames, fps: 30, size: 150, shift: -90)
+            case "combo2":
+                GatedTimerFramesAnimation(ref: entry.date - 60, frames: frames, fps: 30,
+                                          size: 150, shift: -90, eraseLower: true,
+                                          startDate: entry.date)
             case "timers":
                 ImageFramesAnimation(ref: entry.date - 60, size: 150, frames: frames, overlap: 0, cycle: 2, fps: 30)
             default:
@@ -309,6 +389,13 @@ struct ComboSmallWidget: Widget {
     var body: some WidgetConfiguration {
         StaticConfiguration(kind: "Combo30", provider: OneEntryProvider()) { SmallCompareView(entry: $0, kind: "combo") }
             .configurationDisplayName("Combo 30").supportedFamilies([.systemSmall]).contentMarginsDisabled()
+    }
+}
+
+struct Combo2SmallWidget: Widget {
+    var body: some WidgetConfiguration {
+        StaticConfiguration(kind: "Combo2_30", provider: OneEntryProvider()) { SmallCompareView(entry: $0, kind: "combo2") }
+            .configurationDisplayName("Combo2 30").supportedFamilies([.systemSmall]).contentMarginsDisabled()
     }
 }
 
