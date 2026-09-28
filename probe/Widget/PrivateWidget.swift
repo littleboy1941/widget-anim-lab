@@ -336,11 +336,14 @@ struct PrivateProbeWidget: Widget {
                                           fps: 30, size: 150, shift: -90, gateFirst: true)
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                     .containerBackground(.white, for: .widget)
-            } else if Variant.mode == "combo2" {
+            } else if ["combo2", "combo2e", "combo2s"].contains(Variant.mode) {
+                // combo2e — только ластик, combo2s — только стартовая маска (разделить, что
+                // из двух гасит верхний слой: в combo2 смен 15/с вместо ~43 у combo).
                 GatedTimerFramesAnimation(ref: entry.date - 60,
                                           frames: ImageFramesAnimation.experimentFrames(30, prefix: "fps30"),
-                                          fps: 30, size: 150, shift: -90, eraseLower: true,
-                                          startDate: entry.date)
+                                          fps: 30, size: 150, shift: -90,
+                                          eraseLower: Variant.mode != "combo2s",
+                                          startDate: Variant.mode == "combo2e" ? nil : entry.date)
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                     .containerBackground(.white, for: .widget)
             } else if Variant.mode == "combo1" || Variant.mode == "combo0" {
