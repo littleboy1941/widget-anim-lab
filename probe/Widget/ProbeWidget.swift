@@ -67,6 +67,8 @@ struct ProbeWidgetBundle: WidgetBundle {
         PrivateProbeWidget()
         ComboSmallWidget()
         Combo2SmallWidget()
+        Combo2eSmallWidget()
+        Combo2sSmallWidget()
         TimersSmallWidget()
         RotationSmallWidget()
         #elseif SWIPE_EXPERIMENTS

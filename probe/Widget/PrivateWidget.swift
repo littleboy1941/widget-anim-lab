@@ -373,10 +373,10 @@ struct SmallCompareView: View {
             switch kind {
             case "combo":
                 GatedTimerFramesAnimation(ref: entry.date - 60, frames: frames, fps: 30, size: 150, shift: -90)
-            case "combo2":
+            case "combo2", "combo2e", "combo2s":
                 GatedTimerFramesAnimation(ref: entry.date - 60, frames: frames, fps: 30,
-                                          size: 150, shift: -90, eraseLower: true,
-                                          startDate: entry.date)
+                                          size: 150, shift: -90, eraseLower: kind != "combo2s",
+                                          startDate: kind == "combo2e" ? nil : entry.date)
             case "timers":
                 ImageFramesAnimation(ref: entry.date - 60, size: 150, frames: frames, overlap: 0, cycle: 2, fps: 30)
             default:
@@ -399,6 +399,23 @@ struct Combo2SmallWidget: Widget {
     var body: some WidgetConfiguration {
         StaticConfiguration(kind: "Combo2_30", provider: OneEntryProvider()) { SmallCompareView(entry: $0, kind: "combo2") }
             .configurationDisplayName("Combo2 30").supportedFamilies([.systemSmall]).contentMarginsDisabled()
+    }
+}
+
+/// Только ластик: в симуляторе 27 смен/с, двоения нет (прогон 36442763550).
+struct Combo2eSmallWidget: Widget {
+    var body: some WidgetConfiguration {
+        StaticConfiguration(kind: "Combo2e_30", provider: OneEntryProvider()) { SmallCompareView(entry: $0, kind: "combo2e") }
+            .configurationDisplayName("Combo2e 30").supportedFamilies([.systemSmall]).contentMarginsDisabled()
+    }
+}
+
+/// Только стартовая маска: в симуляторе 25 смен/с (прогон 36442781216); на телефоне — прячет ли
+/// верхний слой в статичном виде при свайпе (iOS 27).
+struct Combo2sSmallWidget: Widget {
+    var body: some WidgetConfiguration {
+        StaticConfiguration(kind: "Combo2s_30", provider: OneEntryProvider()) { SmallCompareView(entry: $0, kind: "combo2s") }
+            .configurationDisplayName("Combo2s 30").supportedFamilies([.systemSmall]).contentMarginsDisabled()
     }
 }
 
