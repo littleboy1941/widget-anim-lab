@@ -293,6 +293,41 @@ struct ComboSingleView: View {
     }
 }
 
+/// Опыт «стрелка» (2026-09-28): откуда потолок вращения ~13 Гц. Все клетки — оборот за 1 с.
+/// A — простая стрелка без масок; B — цветной квадрат под вращающейся маской-стрелкой;
+/// C — анимация 30 кадров с радиусом дуг ×1; D — как в продукте, ×50 (контроль, ~13 Гц).
+/// Если A и B сильно чаще 13 Гц — упор в маски из дуг, а не во вращение.
+struct NeedleExperimentView: View {
+    private let size: CGFloat = 150
+
+    private var needle: some View {
+        Rectangle()
+            .fill(Color.black)
+            .frame(width: size * 0.06, height: size * 0.45)
+            .offset(y: -size * 0.225)
+            .frame(width: size, height: size)
+    }
+
+    var body: some View {
+        let frames = ImageFramesAnimation.experimentFrames(30, prefix: "fps30")
+        VStack(spacing: 12) {
+            HStack(spacing: 12) {
+                needle
+                    .clockHandRotationEffect(period: .custom(1))
+                Color.blue
+                    .frame(width: size, height: size)
+                    .mask(needle.clockHandRotationEffect(period: .custom(1)))
+            }
+            HStack(spacing: 12) {
+                RotationFramesAnimation(frames: frames, fps: 30, size: size, radiusMultiplier: 1)
+                RotationFramesAnimation(frames: frames, fps: 30, size: size)
+            }
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .containerBackground(.white, for: .widget)
+    }
+}
+
 /// Одна запись (policy .never). SwipeProvider даёт 30 записей (по минуте) — архив таймлайна
 /// с 30 копиями вида и кадров вышел 11 МБ, chronod отбросил его («too large timeline archive
 /// 11042328», прогон 36168304293) и показывал заглушку. Опорная дата — целая минута.
@@ -350,6 +385,8 @@ struct PrivateProbeWidget: Widget {
                 ComboSingleView(entry: entry, shift: Variant.mode == "combo1" ? -90 : 0)
             } else if Variant.mode == "combo" {
                 ComboExperimentView(entry: entry)
+            } else if Variant.mode == "needle" {
+                NeedleExperimentView()
             } else if let mode = CapacityMode(Variant.mode) {
                 PrivateCapacityView(mode: mode)
             } else {
