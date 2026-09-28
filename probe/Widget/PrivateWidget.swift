@@ -36,8 +36,8 @@ struct RotationFramesAnimation: View {
     private func frameLayer(_ index: Int, radius: CGFloat, angle: Double,
                             period: Double) -> some View {
         Image(uiImage: frames[index])
-            .widgetAccentedRenderingMode(.fullColor)
             .resizable()
+            .widgetAccentedRenderingMode(.fullColor)
             .frame(width: size, height: size)
             .mask(
                 ArcSliceMask(startAngle: shift - angle * Double(index + 1),
@@ -185,8 +185,8 @@ struct GatedTimerFramesAnimation: View {
     private func upperFrame(_ j: Int, phases: Int, angle: Double,
                             radius: CGFloat, period: Double) -> some View {
         let image = Image(uiImage: frames[j])
-            .widgetAccentedRenderingMode(.fullColor)
             .resizable()
+            .widgetAccentedRenderingMode(.fullColor)
             .frame(width: size, height: size)
         return Group {
             if gateFirst {

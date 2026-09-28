@@ -141,9 +141,9 @@ struct ImageFramesAnimation: View {
         ZStack {
             ForEach(0..<frames.count, id: \.self) { f in
                 Image(uiImage: frames[f])
-                    .widgetAccentedRenderingMode(.fullColor)
                     .resizable()
                     .interpolation(.none)
+                    .widgetAccentedRenderingMode(.fullColor)
                     .frame(width: size, height: size)
                     .mask {
                         ZStack {
@@ -195,9 +195,9 @@ struct SplitImageFramesAnimation: View {
                         let i = stack * stackSize + local
                         if i < frames.count {
                             Image(uiImage: frames[i])
-                                .widgetAccentedRenderingMode(.fullColor)
                                 .resizable()
                                 .interpolation(.none)
+                                .widgetAccentedRenderingMode(.fullColor)
                                 .frame(width: size, height: size)
                                 .mask {
                                     PhaseWindow(ref: ref, phase: i, fps: fps, cycle: cycle,
@@ -255,9 +255,9 @@ struct GroupedImageFramesAnimation: View {
                     ForEach(0..<(frames.count / fps), id: \.self) { second in
                         let i = second * fps + slot
                         Image(uiImage: frames[i])
-                            .widgetAccentedRenderingMode(.fullColor)
                             .resizable()
                             .interpolation(.none)
+                            .widgetAccentedRenderingMode(.fullColor)
                             .frame(width: size, height: size)
                             .mask {
                                 TimerGlyph(date: ref + Double(second),
