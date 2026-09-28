@@ -3,6 +3,7 @@
 // Подробности схемы — в fontgen.py.
 import SwiftUI
 import UIKit
+import WidgetKit
 
 enum ProbeConfig {
     static let fps = 8
